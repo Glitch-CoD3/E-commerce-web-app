@@ -1,0 +1,28 @@
+{
+  "name": "users",
+  "version": "1.0.0",
+  "description": "User register,  authentication, role, verification, auth related all ",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon -r dotenv/config --experimental-json-modules ./src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Glitch-CoD3/E-commerce-web-app.git"
+  },
+  "author": "MD JUEL RANA",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Glitch-CoD3/E-commerce-web-app/issues"
+  },
+  "homepage": "https://github.com/Glitch-CoD3/E-commerce-web-app#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.22.5",
+    "nodemon": "^3.1.14"
+  }
+}
