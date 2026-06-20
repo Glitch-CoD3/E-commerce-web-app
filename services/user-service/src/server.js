@@ -16,7 +16,7 @@ DB.getConnection((err, connection) => {
         const PORT = process.env.PORT || 8000;
         app.listen(PORT, () => {
             console.log(`✅ User service is running on port ${PORT}`);
-            console.log("http://localhost:" + PORT + "/");
+            console.log("\n🌍 http://localhost:" + PORT + "/");
         });
     }
 });
