@@ -1,4 +1,5 @@
 import DB from "../config/db.config.js";
+import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { admin_role_id, user_role_id } from "../constants.js";
 import { generate_access_token, generate_refresh_token } from "../utils/token_generator_verify.js";
@@ -6,7 +7,11 @@ import { hashPassword, comparePassword, hashPhoneNumber, comparePhoneNumber } fr
 import { sendEmail } from "../utils/email_service_otp_send.js";
 import { generateOTP, getOtpHtml } from "../utils/generate_otp.js";
 
-
+/**
+ * @name POST /api/v1/auth/register
+ * @description User can registered by this
+ *@access public 
+ */
 const registerUser = async (req, res) => {
     try {
         const { name, email, password, phone_number } = req.body;
@@ -71,6 +76,12 @@ const registerUser = async (req, res) => {
 };
 
 
+
+/**
+ * @name POST /api/v1/auth/login
+ * @description  registered and verified user can login 
+ *@access private 
+ */
 const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -109,9 +120,11 @@ const loginUser = async (req, res) => {
         const refresh_token_hash = await bcrypt.hash(refresh_token, 10);
 
         //create user session
+        const ip_address = req.ip;
+        const user_agent = req.headers['user-agent'];
         const [session] = await DB.promise().query(
-            'INSERT INTO user_sessions (refresh_token_hash, user_id) VALUES (?, ?)',
-            [refresh_token_hash, user.id]
+            'INSERT INTO user_sessions (refresh_token_hash, user_id, role_id, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
+            [refresh_token_hash, user.id, user.role_id, ip_address, user_agent]
         );
 
         //generate access token
@@ -121,7 +134,7 @@ const loginUser = async (req, res) => {
         res.cookie('refreshToken', refresh_token, {
             httpOnly: true,
             secure: true,
-            samesite: 'Strict',
+            sameSite: 'Strict',
             maxAge: 15 * 60 * 1000 // 15 minutes
         })
 
@@ -144,6 +157,11 @@ const loginUser = async (req, res) => {
 };
 
 
+/**
+ * @name POST /api/v1/auth/email-verify
+ * @description Register user be verified by email OTP
+ *@access public 
+ */
 const OTP_verification = async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -196,16 +214,14 @@ const OTP_verification = async (req, res) => {
         // Verify user
         await DB.promise().query(
             `UPDATE users
-             SET is_verified = 1
+             SET is_verified = 1, status ='active'
              WHERE email = ?`,
             [email]
         );
 
         // Delete OTP after successful verification
         await DB.promise().query(
-            `DELETE FROM otps
-             WHERE email = ?`,
-            [email]
+            `DELETE FROM otps WHERE email = ?`, [email]
         );
 
         return res.status(200).json({
@@ -224,20 +240,73 @@ const OTP_verification = async (req, res) => {
 };
 
 
-const refresh = async (req, res) => {
+/**
+ * @name POST /api/v1/auth/logout
+ * @description Logged in verified user can logout
+ *@access private 
+ */
+const log_out = async (req, res) => {
     try {
-        const token = req.cookies.Token || req.headers['authorization']?.split(' ')[1];
-
+        const token = req.cookies?.refreshToken || req.headers['authorization']?.split(' ')[1];
         if (!token) {
             return res.status(401).json({ message: 'No token provided' });
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        const [session] = await DB.promise().query(
-            'SELECT user_id, refresh_token_hash FROM user_sessions WHERE user_id = ?', [decoded.id]
-        );
+        //find session basis on user id and revoked=false
 
+        const [session] = await DB.promise().query(
+            `SELECT id, user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = 0 LIMIT 1`, [decoded.id]
+        )
+
+        if (session.length === 0) {
+            return res.status(401).json({
+                message: 'Session not found or revoked'
+            });
+        }
+
+
+        //update on database 
+        await DB.promise().query(
+            `UPDATE user_sessions SET revoked = 1 WHERE user_id= ?`, [decoded.id]
+        )
+
+        //clear refreshToken from cookie
+        res.clearCookie('refreshToken')
+
+        return res.status(200).json({
+            session_id: session[0].id,
+            success: 'success',
+            message: 'Logout Successfully'
+        })
+
+    } catch (error) {
+        console.error("Logout error ", error);
+        return res.status(401).json({ message: 'Unauthorized for logout' });
+    }
+}
+
+
+/**
+ * @name POST /api/v1/auth/refresh
+ * @description Create new refresh and accessToken ( Token Rotation)
+ *@access private 
+ */
+const refresh = async (req, res) => {
+    try {
+        const token = req.cookies.refreshToken || req.headers['authorization']?.split(' ')[1];
+
+        if (!token) {
+            return res.status(401).json({ message: 'No token provided' });
+        }
+
+        const decoded = await jwt.verify(token, process.env.JWT_SECRET);
+
+
+        const [session] = await DB.promise().query(
+            'SELECT user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = ?', [decoded.id, 0]
+        );
 
         if (session.length === 0) {
             return res.status(401).json({ message: 'Invalid token' });
@@ -245,20 +314,38 @@ const refresh = async (req, res) => {
 
         //create new refresh_token
         const refresh_token = generate_refresh_token(decoded.id, decoded.name, decoded.email, decoded.role_id);
-        const refresh_token_hash = bcrypt.hash(refresh_token, 10);
+        const refresh_token_hash = await bcrypt.hash(refresh_token, 10);
 
-        //update refresh_token_hash on database
-        await DB.promise().querry(
-            'UPDATE refresh_token_hash FROM user_sessions WHERE user_id=?', [decoded.id]
-        )
+        // Update refresh token hash in database
+        await DB.promise().query(
+            `UPDATE user_sessions
+            SET refresh_token_hash = ?
+            WHERE user_id = ?`,
+            [refresh_token_hash, decoded.id]
+        );
 
         //create new access token
         const access_token = generate_access_token(decoded.id, decoded.name, decoded.email, decoded.role_id)
 
+        //set refreshToken on cookie
+        res.cookie('refreshToken', refresh_token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'Strict',
+            maxAge: 15 * 60 * 1000 // 15 minutes
+        })
+
+
+        return res.status(201)
+            .json({
+                session_id: session[0].id,
+                message: 'Tokens are refreshed',
+                access_token
+            })
     } catch (error) {
         console.error('Error refreshing token:', error);
         res.status(500).json({ message: 'Internal server error from refresh' });
     }
 }
 
-export { registerUser, loginUser, refresh, OTP_verification };
+export { registerUser, loginUser, refresh, OTP_verification, log_out };
