@@ -1,7 +1,8 @@
 import express from 'express';
+import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
-import { registerUser, loginUser, refresh, OTP_verification, log_out } from '../controllers/auth.controller.js';
+import { registerUser, loginUser, refresh, OTP_verification, log_out, get_me } from '../controllers/auth.controller.js';
 
 /**
  * @name POST /api/v1/auth
@@ -38,5 +39,13 @@ router.post('/logout', log_out);
  *@access private 
  */
 router.post('/refresh', refresh);
+
+
+/**
+ * @name POST /api/v1/get-me
+ * @description user get self data
+ *@access private 
+ */
+router.get('/get-me', verifyJWT, get_me )
 
 export default router;

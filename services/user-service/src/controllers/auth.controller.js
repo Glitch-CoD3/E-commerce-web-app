@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { admin_role_id, user_role_id } from "../constants.js";
 import { generate_access_token, generate_refresh_token } from "../utils/token_generator_verify.js";
-import { hashPassword, comparePassword, hashPhoneNumber, comparePhoneNumber } from "../utils/hash_password.js";
+import { hashPassword, comparePassword } from "../utils/hash_password.js";
 import { sendEmail } from "../utils/email_service_otp_send.js";
 import { generateOTP, getOtpHtml } from "../utils/generate_otp.js";
 
@@ -31,12 +31,11 @@ const registerUser = async (req, res) => {
 
         // Hash password
         const hashedPassword = await hashPassword(password);
-        const phone_number_hash = await hashPhoneNumber(phone_number);
 
         // Insert user
         const [insertUser] = await DB.promise().query(
             'INSERT INTO users (full_name, email, password_hash, phone_number) VALUES (?, ?, ?, ?)',
-            [name, email, hashedPassword, phone_number_hash]
+            [name, email, hashedPassword, phone_number]
         );
 
         //OTP generation and sending email
@@ -348,4 +347,46 @@ const refresh = async (req, res) => {
     }
 }
 
-export { registerUser, loginUser, refresh, OTP_verification, log_out };
+
+/**
+ * @name POST /api/v1/auth/get-me
+ * @description user get self data
+ *@access private 
+ */
+
+const get_me = async (req, res) => {
+    try {
+        const user_id = req.user?.id
+
+        if (!user_id) {
+            return res.status(401).json({
+                message: 'Unauthorized user request'
+            })
+        }
+
+        const [user_data] = await DB.promise().query(
+            `SELECT full_name, email, phone_number FROM users WHERE id = ?`, [user_id]
+        )
+
+        if (user_data.length === 0) {
+            return res.status(401).json({
+                message: 'User no Found'
+            })
+        }
+
+        const user = user_data[0]
+
+        return res.status(200).json({
+            success: "success",
+            user: user
+        })
+
+    } catch (error) {
+        console.error("Internal server Error", error)
+        return res.status(500).json({
+            message: "Internel server Error From get_me Controller"
+        })
+    }
+}
+
+export { registerUser, loginUser, refresh, OTP_verification, log_out, get_me };
