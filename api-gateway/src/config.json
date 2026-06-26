@@ -1,0 +1,20 @@
+{
+    "services": {
+        "user-service": {
+            "URI": "http://localhost:8000",
+            "routes": [
+                {
+                    "path": "/auth",
+                    "method": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "PATCH",
+                        "UPDATE"
+                    ]
+                }
+            ]
+        }
+    }
+}
