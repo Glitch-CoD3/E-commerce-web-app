@@ -75,83 +75,139 @@ const registerUser = async (req, res) => {
 };
 
 
-
 /**
  * @name POST /api/v1/auth/login
  * @description  registered and verified user can login 
  *@access private 
  */
+
 const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required to login' });
+            return res.status(400).json({
+                message: "Email and password are required."
+            });
         }
 
-        const [response] = await DB.promise().query(
-            'SELECT * FROM users WHERE email = ?',
+        // Find user
+        const [users] = await DB.promise().query(
+            `SELECT * FROM users WHERE email = ?`,
             [email]
         );
 
-
-        if (response.length === 0) {
-            return res.status(400).json({ message: 'User not registered' });
+        if (users.length === 0) {
+            return res.status(400).json({
+                message: "User not registered."
+            });
         }
 
-        const user = response[0];
+        const user = users[0];
 
-
-        const isPasswordValid = await comparePassword(password, user.password_hash);
-
-        if (!isPasswordValid) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-
-        //check Otp verification
-        if (user.is_verified === 0) {
-            return res.status(400).json({ message: 'User not verified. Please verify your email before logging in.' });
-        }
-
-        //create token
-        const refresh_token = generate_refresh_token(user.id, user.full_name, user.email, user.role_id);
-
-        const refresh_token_hash = await bcrypt.hash(refresh_token, 10);
-
-        //create user session
-        const ip_address = req.ip;
-        const user_agent = req.headers['user-agent'];
-        const [session] = await DB.promise().query(
-            'INSERT INTO user_sessions (refresh_token_hash, user_id, role_id, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
-            [refresh_token_hash, user.id, user.role_id, ip_address, user_agent]
+        // Verify password
+        const isPasswordValid = await comparePassword(
+            password,
+            user.password_hash
         );
 
-        //generate access token
-        const access_token = generate_access_token(user.id, user.full_name, user.email, user.role_id);
+        if (!isPasswordValid) {
+            return res.status(400).json({
+                message: "Invalid credentials."
+            });
+        }
 
+        // Verify email
+        if (user.is_verified === 0) {
+            return res.status(400).json({
+                message: "Please verify your email first."
+            });
+        }
 
-        res.cookie('refreshToken', refresh_token, {
+        const ip_address = req.ip;
+        const user_agent = req.headers["user-agent"];
+
+        // ================================
+        // Step 1: Create session
+        // ================================
+        const [session] = await DB.promise().query(
+            `INSERT INTO user_sessions
+            (user_id, role_id, ip_address, user_agent)
+            VALUES (?, ?, ?, ?)`,
+            [
+                user.id,
+                user.role_id,
+                ip_address,
+                user_agent
+            ]
+        );
+
+        const sessionId = session.insertId;
+
+        // ================================
+        // Step 2: Generate tokens
+        // ================================
+        const access_token = generate_access_token({
+            id: user.id,
+            role_id: user.role_id,
+            full_name: user.full_name,
+            email: user.email,
+        });
+
+        const refresh_token = generate_refresh_token({
+            id: user.id,
+            role_id: user.role_id,
+            session_id: sessionId,
+        });
+
+        // ================================
+        // Step 3: Hash refresh token
+        // ================================
+        const refresh_token_hash = await bcrypt.hash(refresh_token, 10);
+
+        // ================================
+        // Step 4: Save hash
+        // ================================
+        await DB.promise().query(
+            `UPDATE user_sessions
+             SET refresh_token_hash = ?
+             WHERE id = ?`,
+            [
+                refresh_token_hash,
+                sessionId
+            ]
+        );
+
+        // ================================
+        // Step 5: Store refresh token
+        // ================================
+        res.cookie("refreshToken", refresh_token, {
             httpOnly: true,
             secure: true,
-            sameSite: 'Strict',
-            maxAge: 15 * 60 * 1000 // 15 minutes
-        })
+            sameSite: "Strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
 
-
-        res.status(200).json({
-            message: 'Login successful',
-            session_id: session.insertId,
+        // ================================
+        // Response
+        // ================================
+        return res.status(200).json({
+            message: "Login successful.",
+            session_id: sessionId,
+            accessToken: access_token,
             user: {
                 id: user.id,
                 full_name: user.full_name,
                 email: user.email
-            },
-            accessToken: access_token,
+            }
         });
 
     } catch (error) {
-        console.error('Error logging in user:', error);
-        res.status(500).json({ message: 'Internal server error from loginUser' });
+        console.error(error);
+
+        return res.status(500).json({
+            message: "Internal server error."
+        });
     }
 };
 
@@ -176,7 +232,7 @@ const OTP_verification = async (req, res) => {
         const [otpRecord] = await DB.promise().query(
             `SELECT * 
              FROM otps
-             WHERE email = ?`,
+             WHERE email = ? AND otp_type = 'email_verification'`,
             [email]
         );
 
@@ -240,42 +296,196 @@ const OTP_verification = async (req, res) => {
 
 
 /**
+ * @name POST /api/v1/auth/resend-otp
+ * @description Register user be verified by email OTP
+ *@access public 
+ */
+
+const resend_otp = async (req, res) => {
+
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                message: "Email is required."
+            });
+        }
+
+        // Check user exists
+        const [users] = await DB.promise().query(
+            `SELECT id, is_verified
+             FROM users
+             WHERE email = ?`,
+            [email]
+        );
+
+        if (users.length === 0) {
+            return res.status(404).json({
+                message: "User not found."
+            });
+        }
+
+
+
+        // Delete old verification OTP
+        await DB.promise().query(
+            `DELETE FROM otps
+             WHERE email = ?
+             AND otp_type = 'email_verification'`,
+            [email]
+        );
+
+        //New OTP generation and sending email
+        const otp = generateOTP();
+        const otpHtml = getOtpHtml(otp);
+
+        // Store OTP in database with expiration time (e.g., 10 minutes)
+        const otp_hash = await bcrypt.hash(otp, 10);
+
+        await DB.promise().query(
+            'INSERT INTO otps (user_id, email, otp_code_hash, otp_type, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
+            [users[0].id, email, otp_hash, 'email_verification']
+        );
+
+        await sendEmail(email, 'Your OTP Code', `Your OTP code is: ${otp}`, otpHtml);
+
+
+        return res.status(200).json({
+            success: true,
+            message: "A new verification OTP has been sent."
+        });
+
+    } catch (error) {
+        console.error("Resend OTP Error:", error);
+
+        return res.status(500).json({
+            message: "Server Error"
+        });
+    }
+}
+
+
+/**
+ * @name POST /api/v1/auth/verify-reset-otp
+ * @description Register user be verified by email OTP
+ *@access public 
+ */
+
+const verify_resend_OTP = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({
+                message: "Email and OTP are required."
+            });
+        }
+
+        const [OTP] = await DB.promise().query(
+            `SELECT *
+             FROM otps
+             WHERE email = ?
+             AND otp_type = 'email_verification'`,
+            [email]
+        );
+
+        if (OTP.length === 0) {
+            return res.status(400).json({
+                message: "OTP not found."
+            });
+        }
+
+        const otpData = OTP[0];
+
+        if (new Date() > new Date(otpData.expires_at)) {
+            return res.status(400).json({
+                message: "OTP expired."
+            });
+        }
+
+
+
+        const matched = await bcrypt.compare(
+            otp,
+            otpData.otp_code_hash
+        );
+
+        if (!matched) {
+            return res.status(400).json({
+                message: "Invalid OTP."
+            });
+        }
+
+        // Optional: mark user verified
+        await DB.promise().query(
+            `UPDATE users
+             SET is_verified = 1,
+             status = 'active'
+             WHERE email = ?
+             AND is_verified = 0
+             AND status = 'inactive'`,
+            [email]
+        );
+
+        // Delete used OTP
+        await DB.promise().query(
+            `DELETE FROM otps
+             WHERE email = ?
+             AND id = ?`,
+            [email, otpData.id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP verified."
+        });
+
+    } catch (error) {
+        console.error("Verify Reset OTP Error:", error);
+
+        return res.status(500).json({
+            message: "Server Error"
+        });
+    }
+};
+/**
  * @name POST /api/v1/auth/logout
  * @description Logged in verified user can logout
  *@access private 
  */
+
 const log_out = async (req, res) => {
     try {
-        const token = req.cookies?.refreshToken || req.headers['authorization']?.split(' ')[1];
-        if (!token) {
-            return res.status(401).json({ message: 'No token provided' });
-        }
+        const user = req.user;
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const session_id = user.session_id;
 
-        //find session basis on user id and revoked=false
+        const [sessions] = await DB.promise().query(
+            `SELECT id, revoked
+            FROM user_sessions
+            WHERE id = ? AND revoked = 0`,
+            [session_id]
+        );
 
-        const [session] = await DB.promise().query(
-            `SELECT id, user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = 0 LIMIT 1`, [decoded.id]
-        )
 
-        if (session.length === 0) {
+        if (sessions.length === 0) {
             return res.status(401).json({
-                message: 'Session not found or revoked'
+                message: "Session not found or revoked"
             });
         }
 
 
         //update on database 
         await DB.promise().query(
-            `UPDATE user_sessions SET revoked = 1 WHERE user_id= ?`, [decoded.id]
+            `UPDATE user_sessions SET revoked = 1 WHERE id= ? `, [session_id]
         )
 
         //clear refreshToken from cookie
         res.clearCookie('refreshToken')
 
         return res.status(200).json({
-            session_id: session[0].id,
+            session_id: session_id,
             success: 'success',
             message: 'Logout Successfully'
         })
@@ -288,23 +498,63 @@ const log_out = async (req, res) => {
 
 
 /**
+ * @name POST /api/v1/auth/logout-all
+ * @description Logged in verified user can logout
+ *@access private 
+ */
+const logout_all_devices = async (req, res) => {
+    try {
+        const user_id = req.user?.id
+
+        if (!user_id) {
+            return res.status(401).json({
+                message: 'Unauthorized user request'
+            });
+        }
+
+        const [result] = await DB.promise().query(
+            `UPDATE user_sessions
+             SET revoked = 1
+             WHERE user_id = ? AND revoked = 0`,
+            [user_id]
+        );
+
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                message: 'No active sessions found'
+            });
+        }
+
+        res.clearCookie('refreshToken');
+
+        return res.status(200).json({
+            success: true,
+            message: 'Logged out from all devices successfully'
+        });
+
+    } catch (error) {
+        console.error('Logout all devices error:', error);
+
+        return res.status(500).json({
+            message: 'Internal server error'
+        });
+    }
+};
+
+
+/**
  * @name POST /api/v1/auth/refresh
  * @description Create new refresh and accessToken ( Token Rotation)
  *@access private 
  */
 const refresh = async (req, res) => {
     try {
-        const token = req.cookies.refreshToken || req.headers['authorization']?.split(' ')[1];
 
-        if (!token) {
-            return res.status(401).json({ message: 'No token provided' });
-        }
-
-        const decoded = await jwt.verify(token, process.env.JWT_SECRET);
-
+        const user = req.user
 
         const [session] = await DB.promise().query(
-            'SELECT user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = ?', [decoded.id, 0]
+            'SELECT user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = ?', [user.id]
         );
 
         if (session.length === 0) {
@@ -312,7 +562,7 @@ const refresh = async (req, res) => {
         }
 
         //create new refresh_token
-        const refresh_token = generate_refresh_token(decoded.id, decoded.name, decoded.email, decoded.role_id);
+        const refresh_token = generate_refresh_token(user.id, user.name, user.email, user.role_id);
         const refresh_token_hash = await bcrypt.hash(refresh_token, 10);
 
         // Update refresh token hash in database
@@ -320,7 +570,7 @@ const refresh = async (req, res) => {
             `UPDATE user_sessions
             SET refresh_token_hash = ?
             WHERE user_id = ?`,
-            [refresh_token_hash, decoded.id]
+            [refresh_token_hash, user.id]
         );
 
         //create new access token
@@ -389,4 +639,107 @@ const get_me = async (req, res) => {
     }
 }
 
-export { registerUser, loginUser, refresh, OTP_verification, log_out, get_me };
+
+/**
+ * @name POST /api/v1/auth/forgot-password
+ * @name POST /api/v1/auth/reset-password
+ * @description User can change his password if they forget their password
+ *@access public 
+ */
+
+const forgot_password = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                message: "Email is required"
+            });
+        }
+
+        const [users] = await DB.promise().query(
+            `SELECT id FROM users WHERE email = ?`,
+            [email]
+        );
+
+        // Don't reveal whether the email exists
+        if (users.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "If a user with that email exists, a password reset OTP has been sent."
+            });
+        }
+
+        //OTP generation and sending email
+        const otp = generateOTP();
+        const otpHtml = getOtpHtml(otp);
+
+        // Store OTP in database with expiration time (e.g., 10 minutes)
+        const otp_hash = await bcrypt.hash(otp, 10);
+
+        await DB.promise().query(
+            'INSERT INTO otps (user_id, email, otp_code_hash, otp_type, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))',
+            [insertUser.insertId, email, otp_hash, 'reset_password']
+        );
+
+        await sendEmail(email, 'Your OTP Code', `Your OTP code is: ${otp}`, otpHtml);
+
+        return res.status(200).json({
+            success: true,
+            message: "If a user with that email exists, a password reset OTP has been sent."
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            message: "Server Error"
+        });
+    }
+};
+
+
+const reset_password = async (req, res) => {
+    try {
+        const { email, newPassword } = req.body;
+
+        const [user] = await DB.promise().query(
+            `SELECT *
+             FROM users
+             WHERE email = ?
+             AND is_verified = 1`,
+            [email]
+        );
+
+        if (user.length === 0) {
+            return res.status(401).json({
+                message: "User not verified"
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await DB.promise().query(
+            `UPDATE users
+             SET password_hash = ?
+             WHERE email = ?`,
+            [hashedPassword, email]
+        );
+
+        return res.json({
+            message: "Password reset successfully."
+        });
+    } catch (error) {
+        console.error("reset password error: ", error)
+        return res.status(500).json({
+            Error: "Error From reset_password controller"
+        })
+    }
+};
+
+
+export {
+    registerUser, resend_otp, loginUser, refresh,
+    OTP_verification, verify_resend_OTP, log_out, get_me,
+    logout_all_devices, forgot_password, reset_password,
+};
