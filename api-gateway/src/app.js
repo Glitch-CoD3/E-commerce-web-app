@@ -27,6 +27,7 @@ app.use('/health', (req, res) => {
     })
 })
 
+//Error handler
 app.use((error, _req, res, _next) => {
     console.error(error.stack)
     res.status(500).json({
