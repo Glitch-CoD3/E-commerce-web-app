@@ -13,20 +13,16 @@ app.use(express.urlencoded({ extended: true }));
 
 
 // Routes
-import categoriesRoutes from "./routes/categories.routes.js";
-import productRoutes from "./routes/products.routes.js";
-import productVariant from './routes/product_variant.routes.js'
+import cartRoutes from "./routes/cart.routes.js";
 
 // API Routes
-app.use("/api/v1/categories", categoriesRoutes);
-app.use("/api/v1/products", productRoutes);
-app.use('/api/v1/product-variants', productVariant)
+app.use("/api/v1/cart", cartRoutes);
 
 // Health Check
 app.get("/health", (req, res) => {
     res.status(200).json({
         success: true,
-        message: "Product Service is running."
+        message: "Cart Service is running."
     });
 });
 
