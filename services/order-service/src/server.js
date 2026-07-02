@@ -13,13 +13,13 @@ DB.getConnection((err, connection) => {
         connection.release();
 
 
-        const PORT = process.env.PORT || 8001;
-        const SERVICE_NAME = process.env.SERVICE_NAME || "Product-Service";
-        const PRODUCT_SERVICE_URI = process.env.PRODUCT_SERVICE_URI || "http://localhost:8001" ;
+        const PORT = process.env.PORT || 8003;
+        const SERVICE_NAME = process.env.SERVICE_NAME || "Order-Service";
+        const ORDER_SERVICE_URI = process.env.ORDER_SERVICE_URI || "http://localhost:8003";
 
         app.listen(PORT, () => {
             console.log(`✅ ${SERVICE_NAME} is running on port ${PORT}`);
-            console.log(`⛔ ${PRODUCT_SERVICE_URI}`);
+            console.log(`⛔ ${ORDER_SERVICE_URI}`);
         });
     }
 });

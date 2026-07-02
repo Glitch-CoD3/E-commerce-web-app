@@ -15,11 +15,11 @@ DB.getConnection((err, connection) => {
 
         const PORT = process.env.PORT || 8002;
         const SERVICE_NAME = process.env.SERVICE_NAME || "Cart-Service";
-        const USER_SERVICE_URI = process.env.USER_SERVICE_URI || "http://localhost:8002" ;
+        const CART_SERVICE_URI = process.env.CART_SERVICE_URI || "http://localhost:8002" ;
 
         app.listen(PORT, () => {
             console.log(`✅ ${SERVICE_NAME} is running on port ${PORT}`);
-            console.log(`⛔ ${USER_SERVICE_URI}`);
+            console.log(`⛔ ${CART_SERVICE_URI}`);
         });
     }
 });
