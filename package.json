@@ -1,0 +1,24 @@
+{
+  "name": "e-commerce-(microservice)",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+      "start": "concurrently \"npm run dev --prefix api-gateway\" \"npm run dev --prefix services/user-service\" \"npm run dev --prefix services/product-service\" \"npm run dev --prefix services/cart-service\" \"npm run dev --prefix services/order-service\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Glitch-CoD3/E-commerce-web-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Glitch-CoD3/E-commerce-web-app/issues"
+  },
+  "homepage": "https://github.com/Glitch-CoD3/E-commerce-web-app#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
