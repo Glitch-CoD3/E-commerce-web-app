@@ -1,40 +1,96 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import helmet from 'helmet'
-import morgan from 'morgan'
+import helmet from 'helmet';
+import morgan from 'morgan';
+import cors from 'cors';
 
-//import middlewares
+// Middlewares
 import limiter from './middleware/rateLimit.middleware.js';
+import verifyJWT from './middleware/auth.middleware.js';
 
+// Routes (Proxy)
+import userProxy from './routes/user.proxy.js';
+
+import productProxy from './routes/product-service-proxy/product.proxy.js';
+import categoryProxy from './routes/product-service-proxy/categories.proxy.js';
+import productVariantProxy from './routes/product-service-proxy/product_variant.proxy.js';
+
+
+import orderProxy from './routes/order.proxy.js';
+import cartProxy from './routes/cart.proxy.js';
 
 const app = express();
 
-//security middleware 
+/* ---------------- Security ---------------- */
+
 app.use(helmet());
 
-//Rate limiting middleware
-app.use('/api', limiter)
+app.use(cors({
+    origin: "http://localhost:3000",
+    credentials: true
+}));
 
-//request logger
-app.use(morgan('dev'))
+/* ---------------- Rate Limit ---------------- */
 
-app.use(express.json())
+app.use('/api', limiter);
 
-//health check
-app.use('/health', (req, res) => {
-    res.json({
-        message: "Api Gateway is running"
-    })
-})
+/* ---------------- Logger ---------------- */
 
-//Error handler
-app.use((error, _req, res, _next) => {
-    console.error(error.stack)
-    res.status(500).json({
-        message: "Internal Server Error"
-    })
-})
+app.use(morgan('dev'));
+
+/* ---------------- Parsers ---------------- */
+
+app.use(express.json());
+
+app.use(express.urlencoded({ extended: true }));
+
+app.use(cookieParser());
+
+/* ---------------- Health Check ---------------- */
+
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: "API Gateway is running"
+    });
+});
+
+/* ---------------- Public Routes ---------------- */
 
 
+
+app.use("/api/v1/auth", userProxy);
+
+/* ---------------- Protected Routes ---------------- */
+
+app.use("/api/v1/products", verifyJWT, productProxy);
+app.use("/api/v1/categories", verifyJWT, categoryProxy);
+app.use("/api/v1/product-variants", verifyJWT, productVariantProxy);
+
+
+app.use('/api/v1/cart', verifyJWT, cartProxy);
+
+app.use('/api/v1/orders', verifyJWT, orderProxy);
+
+
+/* ---------------- 404 ---------------- */
+
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        message: "Route Not Found"
+    });
+});
+
+/* ---------------- Error Handler ---------------- */
+
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || "Internal Server Error"
+    });
+});
 
 export default app;
