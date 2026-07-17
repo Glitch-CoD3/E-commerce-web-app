@@ -26,7 +26,7 @@ export const verifyJWT = async (req, res, next) => {
 
 
         req.user = {
-            ...user[0],
+            id: decoded.id.id,
             session_id: decoded.id.session_id
         };
         next();

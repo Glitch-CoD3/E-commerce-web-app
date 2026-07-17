@@ -144,7 +144,7 @@ const updateShippingAddress = async (req, res) => {
  * @description Get a specific shipping address
  * @access Private
  */
-const getShippingAddress = async (req, res) => {
+const getShippingAddressById = async (req, res) => {
     try {
         const user_id = req.user.id;
         const address_id = req.params.id;
@@ -177,10 +177,47 @@ const getShippingAddress = async (req, res) => {
 };
 
 
+/**
+ * @GET getShippingAddress /api/v1/shipping-addresses/:user_id
+ * @description Get a specific shipping address
+ * @access Private
+ */
+const getShippingAddress = async (req, res) => {
+    try {
+        const user_id = req.params.id;
+
+        const [address] = await DB.promise().query(
+            `SELECT id, user_id, full_address, city, state, zip_code
+             FROM shipping_addresses
+             WHERE user_id = ?`,
+            [user_id]
+        );
+
+        if (address.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Shipping address not found."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            address: address[0]
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
 
 export {
     createShippingAddress,
     updateShippingAddress,
-    getShippingAddress
+    getShippingAddress,
+    getShippingAddressById
 }
 

@@ -1,18 +1,19 @@
 import axios from "axios";
 
-const getAllCart = async (token) => {
+const getProductsByIds = async (productIds, token) => {
 
     try {
         const response = await axios.get(
-            `${process.env.CART_SERVICE_URL}/api/v1/cart`,
+            `${process.env.PRODUCT_SERVICE_URL}/api/v1/products/${productIds}`,
             {
                 headers: {
                     Cookie: `refreshToken=${token}`,
-                }
+                },
             }
         );
 
-        return response.data;
+
+        return response.data.data;
 
     } catch (error) {
         console.log("Axios Error:");
@@ -28,4 +29,4 @@ const getAllCart = async (token) => {
     }
 };
 
-export { getAllCart };
+export { getProductsByIds };

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createShippingAddress, updateShippingAddress, getShippingAddress } from '../controllers/shipping_addresses.js';
+import { createShippingAddress, updateShippingAddress, getShippingAddress, getShippingAddressById } from '../controllers/shipping_addresses.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
@@ -11,12 +11,20 @@ const router = express.Router();
  */
 router.post('/', verifyJWT, createShippingAddress);
 
+
+/**
+ * @GET /api/v1/shipping-addresses/:id
+ * @description Get a user's shipping address
+ * @access Private
+ */
+router.get('/user/:id', verifyJWT, getShippingAddress);
+
 /**
  * @GET /api/v1/shipping-addresses/:id
  * @description Get a specific shipping address
  * @access Private
  */
-router.get('/:id', verifyJWT, getShippingAddress);
+router.get('/:id', verifyJWT, getShippingAddressById);
 
 /**
  * @PUT /api/v1/shipping-addresses/:id
