@@ -2,7 +2,7 @@ import DB from '../config/db.config.js'
 import { getAllCart } from '../utils/axiosClient.js'
 import { getProductsByIds } from '../utils/product.api.js'
 import { getShippingAddressByUserId } from '../utils/getShippingAddress.api.js'
-
+const connection = await DB.promise().getConnection();
 /**
  * @method POST /api/v1/order
  * @description Create a new order for the authenticated user.
@@ -36,8 +36,6 @@ const createOrder = async (req, res) => {
         }
 
 
-
-        const connection = await DB.promise().getConnection();
         const token = req.cookies.refreshToken || req.headers.authorization?.split(' ')[1];
 
         //---------------------------------------------------
@@ -683,16 +681,201 @@ const getOrdersByUserId = async (req, res) => {
  * @description Get single order by order id
  * @access Private (Authenticated User)
  */
-const getOrderById = async (req, res ) => {
-    //TODO
-}
+
+const getOrderByOrderId = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+
+        //---------------------------------------------------
+        // Validation
+        //---------------------------------------------------
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Order ID is required"
+            });
+        }
+
+        //---------------------------------------------------
+        // Get Order
+        //---------------------------------------------------
+        const [order_details] = await connection.query(
+            `
+            SELECT *
+            FROM orders
+            WHERE id = ?
+            `,
+            [orderId]
+        );
+
+
+        if (order_details.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        //---------------------------------------------------
+        // Get Order Items
+        //---------------------------------------------------
+        const [itemsResult] = await connection.query(
+            `
+            SELECT
+                id,
+                product_name,
+                product_id,
+                product_variant_id,
+                price,
+                quantity,
+                total_amount
+            FROM order_items
+            WHERE order_id = ?
+            ORDER BY id ASC
+            `,
+            [orderId]
+        );
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+        return res.status(200).json({
+            success: true,
+            message: "Order fetched successfully",
+            order_result: {
+                order_details,
+                Order_items: itemsResult
+            }
+        });
+
+    } catch (error) {
+        console.error("Get Order By ID Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 
 
 /**
- * @method PATCH /api/v1/orders/:orderId/cancel
+ * @method PATCH /api/v1/order/:orderId/cancel
  * @description user can cancel order 
  * @access Private (Authenticated User)
  */
+
+const order_cancel = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const userId = req.user.id;
+
+        //---------------------------------------------------
+        // Validation
+        //---------------------------------------------------
+
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Order ID is required"
+            });
+        }
+
+        //---------------------------------------------------
+        // Check Order
+        //---------------------------------------------------
+
+        const [orderResult] = await connection.query(
+            `
+            SELECT *
+            FROM orders
+            WHERE id = ?
+              AND user_id = ?
+            `,
+            [orderId, userId]
+        );
+
+        if (orderResult.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        const order = orderResult[0];
+        console.log(order.status)
+
+        //---------------------------------------------------
+        // Check Current Status
+        //---------------------------------------------------
+
+        if (order.status === "cancelled") {
+            return res.status(400).json({
+                success: false,
+                message: "Order is already cancelled"
+            });
+        }
+
+        if (
+            ['confirmed', 'processing', 'shipped', 'delivered'].includes(order.status)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot cancel a ${order.status} order`
+            });
+        }
+
+        //---------------------------------------------------
+        // Cancel Order
+        //---------------------------------------------------
+
+        const [updatedOrder] = await connection.query(
+            `
+            UPDATE orders
+            SET
+                status = 'cancelled',
+                updated_at = NOW()
+            WHERE id = ?
+            `,
+            [orderId]
+        );
+
+        //---------------------------------------------------
+        // Restore Stock (Optional)
+        //---------------------------------------------------
+
+
+        // const items = await connection.query(
+        //     `
+        //     SELECT product_id, product_variant_id, quantity
+        //     FROM order_items
+        //     WHERE order_id = ?
+        //     `,
+        //     [orderId]
+        // );
+
+        // await restoreProductStock(items);
+
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+
+        return res.status(200).json({
+            success: true,
+            message: "Order cancelled successfully",
+            orderId
+        });
+
+    } catch (error) {
+        console.error("Order Cancel Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 
 
 
@@ -702,13 +885,180 @@ const getOrderById = async (req, res ) => {
  * @access Private (Admin)
  * 
  */
+const updateOrderStatus = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { status } = req.body
 
+        //---------------------------------------------------
+        // Validation
+        //---------------------------------------------------
+
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Order ID is required"
+            });
+        }
+
+        //---------------------------------------------------
+        // Check Order
+        //---------------------------------------------------
+
+        const [orderResult] = await connection.query(
+            `
+            SELECT *
+            FROM orders
+            WHERE id = ?
+             AND status <> "cancelled"
+            `,
+            [orderId]
+        );
+
+        if (orderResult.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        const order = orderResult;
+
+        console.log(order)
+
+        //---------------------------------------------------
+        // update Order status
+        //---------------------------------------------------
+
+        const [updatedOrder] = await connection.query(
+            `
+            UPDATE orders
+            SET
+            status = ?,
+            updated_at = NOW()
+            WHERE id = ?
+            `,
+            [status, orderId]
+        );
+
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+
+        return res.status(200).json({
+            success: true,
+            message: `Your order is ${status}`,
+            orderId
+        });
+
+    } catch (error) {
+        console.error("Order status update Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 
 /**
  * @method GET /api/v1/orders/admin
  * @description get all Orders
  * @access Private (Admin)
  */
+
+const getAllOrders = async (req, res) => {
+    try {
+        //---------------------------------------------------
+        // Query Parameters
+        //---------------------------------------------------
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const status = req.query.status || "";
+        const search = req.query.search || "";
+
+        //---------------------------------------------------
+        // Build Query
+        //---------------------------------------------------
+
+        let whereClause = "WHERE 1=1";
+        const values = [];
+
+        if (status) {
+            whereClause += " AND status = ?";
+            values.push(status);
+        }
+
+        if (search) {
+            whereClause += " AND id LIKE ?";
+            values.push(`%${search}%`);
+        }
+
+        //---------------------------------------------------
+        // Total Orders
+        //---------------------------------------------------
+        const [countResult] = await connection.query(
+            `
+            SELECT COUNT(*) AS total
+            FROM orders
+            ${whereClause}
+            `,
+            values
+        );
+
+        const totalOrders = countResult[0].total;
+
+        //---------------------------------------------------
+        // Get Orders
+        //---------------------------------------------------
+
+        const [orders] = await connection.query(
+            `
+            SELECT
+                id,
+                user_id,
+                total_amount,
+                discount_amount,
+                shipping_charge,
+                net_amount,
+                status,
+                created_at,
+                updated_at
+            FROM orders
+            ${whereClause}
+            ORDER BY created_at DESC
+            LIMIT ?
+            OFFSET ?
+            `,
+            [...values, limit, offset]
+        );
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+
+        return res.status(200).json({
+            success: true,
+            message: "Orders fetched successfully",
+            totalOrders,
+            currentPage: page,
+            totalPages: Math.ceil(totalOrders / limit),
+            orders
+        });
+
+    } catch (error) {
+        console.error("Get All Orders Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 
 
 /**
@@ -727,23 +1077,346 @@ const getOrderById = async (req, res ) => {
  * @access Private (Admin)
  */
 
+const orderDashboardStatistics = async (req, res) => {
+    try {
+
+        //---------------------------------------------------
+        // Query Params
+        //---------------------------------------------------
+
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const month = req.query.month ? parseInt(req.query.month) : null;
+
+        //---------------------------------------------------
+        // Build WHERE Clause
+        //---------------------------------------------------
+
+        let whereClause = `WHERE YEAR(created_at) = ?`;
+        const values = [year];
+
+        if (month) {
+            whereClause += ` AND MONTH(created_at) = ?`;
+            values.push(month);
+        }
+
+        //---------------------------------------------------
+        // Get Dashboard Statistics
+        //---------------------------------------------------
+
+        const [result] = await connection.query(
+            `
+            SELECT
+                COUNT(*) AS totalOrders,
+
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingOrders,
+
+                SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmedOrders,
+
+                SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processingOrders,
+
+                SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) AS shippedOrders,
+
+                SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS deliveredOrders,
+
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelledOrders,
+
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN payment_status = 'paid'
+                            AND status <> 'cancelled'
+                            THEN total_amount
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS totalRevenue
+
+            FROM orders
+            ${whereClause}
+            `,
+            values
+        );
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+
+        return res.status(200).json({
+            success: true,
+            period: {
+                year,
+                month
+            },
+            statistics: result[0]
+        });
+
+    } catch (error) {
+
+        console.error("Dashboard Statistics Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+
+    }
+};
+
+
 /**
  * @method GET /api/v1/orders/admin/:orderId
- * @description get single Order details ( Order information, Customer information, Order items, Shipping address, Payment status)
+ * @description Get single order details
  * @access Private (Admin)
  */
+
+const getOrderDetailsByOrderId = async (req, res) => {
+    try {
+
+        const { orderId } = req.params;
+
+        //---------------------------------------------------
+        // Validation
+        //---------------------------------------------------
+
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Order ID is required"
+            });
+        }
+
+        //---------------------------------------------------
+        // Get Order
+        //---------------------------------------------------
+
+        const [orders] = await connection.query(
+            `
+            SELECT *
+            FROM orders
+            WHERE id = ?
+            `,
+            [orderId]
+        );
+
+        if (orders.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        const order = orders[0];
+
+        //---------------------------------------------------
+        // Get Order Items
+        //---------------------------------------------------
+
+        const [items] = await connection.query(
+            `
+            SELECT
+                product_id,
+                product_variant_id,
+                product_name,
+                quantity,
+                price,
+                total_amount
+            FROM order_items
+            WHERE order_id = ?
+            `,
+            [orderId]
+        );
+
+        //---------------------------------------------------
+        // Get Shipping Address
+        //---------------------------------------------------
+
+        const [shippingAddress] = await connection.query(
+            `
+            SELECT
+                order_id,
+                full_address,
+                phone_number,
+                state,
+                city,
+                zip_code
+            FROM order_shipping_addresses
+            WHERE order_id = ?
+            `,
+            [orderId]
+        );
+
+        //---------------------------------------------------
+        // Get Customer Information
+        // (Call User Service)
+        //---------------------------------------------------
+
+        // const customer = await getUserById(order.user_id);
+
+        const customer = {
+            id: order.user_id
+        };
+
+        //---------------------------------------------------
+        // Payment Information
+        //---------------------------------------------------
+
+        const payment = {
+            payment_method: order.payment_method,
+            payment_status: order.payment_status || "Pending"
+        };
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                order,
+                customer,
+                items,
+                shippingAddress: shippingAddress[0] || null,
+                payment
+            }
+        });
+
+    } catch (error) {
+
+        console.error("Get Order Details Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+
+    }
+};
+
 
 
 /**
  * @method PATCH /api/v1/orders/:orderId/payment
- * @description Update payment status depending on payment
+ * @description Update payment status
  * @access Private (Admin)
  */
 
+const updatePaymentStatus = async (req, res) => {
+    try {
+
+        const { orderId } = req.params;
+        const { payment_status } = req.body;
+
+        //---------------------------------------------------
+        // Validation
+        //---------------------------------------------------
+
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Order ID is required"
+            });
+        }
+
+        const allowedPaymentStatus = [
+            "pending",
+            "PAID",
+            "UNPAID",
+            "refunded"
+        ];
+
+        if (!allowedPaymentStatus.includes(payment_status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid payment status"
+            });
+        }
+
+        //---------------------------------------------------
+        // Check Order
+        //---------------------------------------------------
+
+        const [orders] = await connection.query(
+            `
+            SELECT id, payment_status
+            FROM orders
+            WHERE id = ?
+            `,
+            [orderId]
+        );
+
+        if (orders.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        //---------------------------------------------------
+        // Already Updated
+        //---------------------------------------------------
+
+        if (orders[0].payment_status === payment_status) {
+            return res.status(400).json({
+                success: false,
+                message: `Payment is already ${payment_status}`
+            });
+        }
+
+        //---------------------------------------------------
+        // Update Payment Status
+        //---------------------------------------------------
+
+        const [result] = await connection.query(
+            `
+            UPDATE orders
+            SET
+                payment_status = ?,
+                updated_at = NOW()
+            WHERE id = ?
+            `,
+            [payment_status, orderId]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Failed to update payment status"
+            });
+        }
+
+        //---------------------------------------------------
+        // Response
+        //---------------------------------------------------
+
+        return res.status(200).json({
+            success: true,
+            message: `Payment status updated to ${payment_status}`
+        });
+
+    } catch (error) {
+
+        console.error("Update Payment Status Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+
+    }
+};
 
 
 
-
-
-
-export { createOrder, buyNowDirectly, getOrdersByUserId };
+export {
+    createOrder,
+    buyNowDirectly,
+    getOrdersByUserId,
+    getOrderByOrderId,
+    order_cancel,
+    updateOrderStatus,
+    getAllOrders,
+    orderDashboardStatistics,
+    getOrderDetailsByOrderId,
+    updatePaymentStatus
+};
