@@ -6,7 +6,7 @@ import cors from 'cors';
 
 // Middlewares
 import limiter from './middleware/rateLimit.middleware.js';
-import verifyJWT from './middleware/auth.middleware.js';
+import { verifyJWT, authorizeRole } from './middleware/auth.middleware.js';
 
 // Routes (Proxy)
 import userProxy from './routes/user.proxy.js';
@@ -16,8 +16,9 @@ import categoryProxy from './routes/product-service-proxy/categories.proxy.js';
 import productVariantProxy from './routes/product-service-proxy/product_variant.proxy.js';
 
 
-import orderProxy from './routes/order.proxy.js';
+import orderProxy from './routes/order_service-proxy/order.proxy.js';
 import cartProxy from './routes/cart.proxy.js';
+import shipping_address_proxy from './routes/order_service-proxy/Shipping_address.proxy.js'
 
 const app = express();
 
@@ -64,13 +65,16 @@ app.use("/api/v1/auth", userProxy);
 /* ---------------- Protected Routes ---------------- */
 
 app.use("/api/v1/products", verifyJWT, productProxy);
-app.use("/api/v1/categories", verifyJWT, categoryProxy);
-app.use("/api/v1/product-variants", verifyJWT, productVariantProxy);
 
+app.use("/api/v1/categories", verifyJWT, categoryProxy);
+
+app.use("/api/v1/product-variants", verifyJWT, productVariantProxy);
 
 app.use('/api/v1/cart', verifyJWT, cartProxy);
 
-app.use('/api/v1/orders', verifyJWT, orderProxy);
+app.use('/api/v1/order', verifyJWT, orderProxy);
+
+app.use('/api/v1/order/address', verifyJWT, shipping_address_proxy);
 
 
 /* ---------------- 404 ---------------- */

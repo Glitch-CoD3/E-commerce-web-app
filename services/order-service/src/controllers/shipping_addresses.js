@@ -25,6 +25,21 @@ const createShippingAddress = async (req, res) => {
             });
         }
 
+        //check whether shipping address exists
+        const [existShippingAddress] = await DB.promise().query(
+            `SELECT user_id
+            FROM shipping_addresses
+            WHERE user_id = ?`,
+            [user_id]
+        );
+
+        if (existShippingAddress.length > 2) {
+            return res.status(409).json({
+                success: false,
+                message: "Shipping address already 2 exists. You can select one of them or Update them"
+            });
+        }
+
         const [result] = await DB.promise().query(
             `INSERT INTO shipping_addresses
             (user_id, full_address, state, city, zip_code)
@@ -76,6 +91,7 @@ const updateShippingAddress = async (req, res) => {
             full_address,
             city,
             state,
+            is_default,
             zip_code
         } = req.body;
 
@@ -103,6 +119,7 @@ const updateShippingAddress = async (req, res) => {
                 full_address = ?,
                 city = ?,
                 state = ?,
+                is_default = ?,
                 zip_code = ?,
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
@@ -110,13 +127,14 @@ const updateShippingAddress = async (req, res) => {
                 full_address,
                 city,
                 state,
+                is_default,
                 zip_code || null,
                 address_id
             ]
         );
 
         const [Updated_address] = await DB.promise().query(
-            `SELECT id, full_address, city, state, zip_code
+            `SELECT id, full_address, city, state, zip_code, is_default
              FROM shipping_addresses
              WHERE id = ? AND user_id = ?`,
             [address_id, user_id]

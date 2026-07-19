@@ -9,50 +9,67 @@ import {
 } from "../controllers/cart.controller.js";
 
 import { verifyJWT } from "../middlewares/auth.middleware.js";
-
+import { allowRoles } from "../middlewares/authorize.middleware.js";
+import { ROLES } from "../constants.js";
 
 const router = express.Router();
 
+// =====================================================
+// Authenticated User Routes
+// =====================================================
+
 /**
- * @route POST /api/v1/cart
+ * @middleware verifyJWT
+ * @description All routes below require an authenticated user.
+ */
+router.use(verifyJWT);
+
+/**
+ * @middleware allowRoles(ROLES.USER, ROLES.ADMIN)
+ * @description All routes below are accessible by authenticated users and administrators.
+ */
+router.use(allowRoles(ROLES.USER, ROLES.ADMIN));
+
+/**
+ * @method POST /api/v1/cart
  * @description Add a product to the authenticated user's cart.
- * @access Private (Authenticated User)
+ * @access Private (User, Admin)
  */
-router.post("/", verifyJWT, addToCart);
+router.post("/", addToCart);
 
 /**
- * @route GET /api/v1/cart
+ * @method GET /api/v1/cart
  * @description Retrieve all items in the authenticated user's cart.
- * @access Private (Authenticated User)
+ * @access Private (User, Admin)
  */
-router.get("/", verifyJWT, getCart);
+router.get("/", getCart);
 
 /**
- * @route GET /api/v1/cart/:id
+ * @method GET /api/v1/cart/:id
  * @description Retrieve a specific cart item by its ID.
- * @access Private (Authenticated User)
+ * @access Private (User, Admin)
  */
-router.get("/:id", verifyJWT, getCartItemById);
+router.get("/:id", getCartItemById);
 
 /**
- * @route PATCH /api/v1/cart/:id
+ * @method PATCH /api/v1/cart/:id
  * @description Update the quantity of a specific cart item.
- * @access Private (Authenticated User)
+ * @access Private (User, Admin)
  */
-router.patch("/:id", verifyJWT, updateCartQuantity);
+router.patch("/:id", updateCartQuantity);
 
 /**
- * @route DELETE /api/v1/cart/:id
+ * @method DELETE /api/v1/cart/:id
  * @description Remove a specific item from the authenticated user's cart.
- * @access Private (Authenticated User)
+ * @access Private (User, Admin)
  */
-router.delete("/:id",verifyJWT, removeCartItem);
+router.delete("/:id", removeCartItem);
 
 /**
- * @route DELETE /api/v1/cart
+ * @method DELETE /api/v1/cart
  * @description Remove all items from the authenticated user's cart.
- * @access Private (Authenticated User)
+ * @access Private (User, Admin)
  */
-router.delete("/",verifyJWT, clearCart);
+router.delete("/", clearCart);
 
 export default router;

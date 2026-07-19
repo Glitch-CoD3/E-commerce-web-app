@@ -8,7 +8,7 @@ const router = Router();
 router.use(
     proxy(process.env.ORDER_SERVICE_URI, {
         proxyReqPathResolver(req) {
-            return "/api/v1/orders" + req.url;
+            return "/api/v1/order" + req.url;
         },
     })
 );

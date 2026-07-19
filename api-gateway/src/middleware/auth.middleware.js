@@ -26,4 +26,27 @@ const verifyJWT = async (req, res, next) => {
     }
 };
 
-export default verifyJWT;
+
+
+const authorizeRole = (...allowedRoles) => {
+    return (req, res, next) => {
+
+        if (!req.user?.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
+        if (!allowedRoles.includes(req.user.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden"
+            });
+        }
+
+        next();
+    };
+};
+
+export {verifyJWT, authorizeRole};
