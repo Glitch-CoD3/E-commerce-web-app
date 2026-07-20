@@ -2,6 +2,7 @@
 
 import PaymentForm from "@/src/components/PaymentForm";
 import ShippingForm from "@/src/components/ShippingFrom";
+import { ShippingFormInputs } from "@/src/type";
 import { CartItemsType } from "@/src/type";
 import { ArrowRight, Trash2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -82,7 +83,7 @@ const cartItems: CartItemsType = [
 ];
 
 const CartPage = () => {
-  const [shippingForm, setShippingForm] = useState(null);
+  const [shippingForm, setShippingForm] = useState<ShippingFormInputs | null>(null);
   const searchParams = useSearchParams()
   const router = useRouter();
 
@@ -143,7 +144,7 @@ const CartPage = () => {
           ))}
 
           {activeStep === 2 && (
-            <ShippingForm />
+            <ShippingForm setShippingForm={setShippingForm} />
           )}
 
           {activeStep === 3 && (
