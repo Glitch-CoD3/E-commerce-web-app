@@ -1,7 +1,10 @@
-const LoginPage = () => {
+import SignupForm from "@/src/components/auth_components/SignupForm";
+const SignupPage = () => {
     return (
-        <div className="bg-gray-400">SignUp Page</div>
+        <div>
+            <SignupForm />
+        </div>
     )
 }
 
-export default LoginPage;
+export default SignupPage;

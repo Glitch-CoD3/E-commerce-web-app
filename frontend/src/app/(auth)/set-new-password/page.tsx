@@ -1,7 +1,10 @@
-const LoginPage = () => {
+import ResetPasswordForm from "@/src/components/auth_components/ResetPasswordForm"
+const setNewPassword = () => {
     return (
-        <div>Set New Password</div>
+        <div>
+            <ResetPasswordForm />
+        </div>
     )
 }
 
-export default LoginPage;
+export default setNewPassword;

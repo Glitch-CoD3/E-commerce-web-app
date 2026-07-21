@@ -1,7 +1,10 @@
-const LoginPage = () => {
+import OtpForm from "@/src/components/auth_components/OtpForm";
+const OtpPage = () => {
     return (
-        <div>OTP SUBMIMT PAGE</div>
+        <div>
+            <OtpForm />
+        </div>
     )
 }
 
-export default LoginPage;
+export default OtpPage;

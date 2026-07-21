@@ -1,7 +1,11 @@
-const LoginPage = () => {
+import ForgotPasswordForm from "@/src/components/auth_components/ForgotPasswordForm";
+
+const ForgotPasswordPage = () => {
     return (
-        <div>Forgot password</div>
+        <div>
+            <ForgotPasswordForm />
+        </div>
     )
 }
 
-export default LoginPage;
+export default ForgotPasswordPage;
