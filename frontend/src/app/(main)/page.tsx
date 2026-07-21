@@ -1,5 +1,5 @@
 import Image from "next/image";
-import ProductList from "../components/ProductList";
+import ProductList from "../../components/ProductList";
 import { promises } from "dns";
 
 const Homepage = async ({searchParams,} : {searchParams: Promise<{ category: string }> }) => {
