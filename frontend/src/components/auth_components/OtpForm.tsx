@@ -2,13 +2,25 @@
 
 import { useRef, useState } from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { submitOtp, resendOtp } from "@/src/services/auth.service";
 
 export default function OtpForm() {
+  const router = useRouter();
   const OTP_LENGTH = 6;
 
   const [otp, setOtp] = useState<string[]>(new Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [seconds, setSeconds] = useState(30);
+
+  const searchParams = useSearchParams();
+  const email = searchParams.get("email");
+  // const email = localStorage.getItem("verifyEmail");
+  if (!email) {
+    alert("Email not found");
+    return;
+  }
+
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -80,8 +92,37 @@ export default function OtpForm() {
 
     console.log(code);
 
-    setLoading(false);
+    setLoading(true);
+    try {
+      const res = await submitOtp(
+        {
+          email: email,
+          otp: code,
+        });
+
+      alert("OTP Verified Successfully!");
+
+      // ✅ redirect
+      router.push("/");
+
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Invalid or expired OTP");
+    }
+
+
+    // ✅ RESEND OTP API
+    const handleResend = async () => {
+      if (!email) return;
+
+      try {
+        await resendOtp({ email });
+        alert("OTP sent again");
+      } catch {
+        alert("Failed to resend OTP");
+      }
+    };
   };
+
 
   return (
     <div className="min-h-screen bg-white flex justify-center items-center px-4">

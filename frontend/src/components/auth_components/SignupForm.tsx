@@ -1,7 +1,9 @@
-"use client";
+'use client'
 
 import React, { useState } from "react";
+import { signupUser } from '@/src/services/auth.service'
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   User,
   Mail,
@@ -9,10 +11,14 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  Phone
 } from "lucide-react";
 
 export default function SignupForm() {
-  const [fullName, setFullName] = useState("");
+  const router = useRouter();
+
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,9 +31,10 @@ export default function SignupForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setError("");
 
-    if (!fullName || !email || !password || !confirmPassword) {
+    if (!name || !phone || !email || !password || !confirmPassword) {
       setError("Please fill in all fields.");
       return;
     }
@@ -40,17 +47,26 @@ export default function SignupForm() {
     setIsLoading(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const response = await signupUser(
 
-      console.log({
-        fullName,
-        email,
-        password,
-      });
+        {
+          name: name,
+          email: email,
+          password: password,
+          phone_number: phone
+        }
+      );
 
-      // Register user
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
+      console.log(response);
+
+      alert("Registration Successful!");
+      
+      router.push(`/otp?email=${encodeURIComponent(email)}`);
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+        "Something went wrong. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -88,7 +104,7 @@ export default function SignupForm() {
             {/* Full Name */}
             <div>
               <label
-                htmlFor="fullname"
+                htmlFor="name"
                 className="mb-1 block text-sm font-medium text-slate-700"
               >
                 Full name
@@ -100,11 +116,11 @@ export default function SignupForm() {
                 </div>
 
                 <input
-                  id="fullname"
+                  id="name"
                   type="text"
                   placeholder="John Doe"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
@@ -130,6 +146,32 @@ export default function SignupForm() {
                   placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+            </div>
+
+
+            {/* Phone Number */}
+            <div>
+              <label
+                htmlFor="phone"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Phone Number
+              </label>
+
+              <div className="relative rounded-lg shadow-sm">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+                  <Phone className="h-5 w-5" />
+                </div>
+
+                <input
+                  id="phone"
+                  type="tel"
+                  placeholder="017XXXXXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>

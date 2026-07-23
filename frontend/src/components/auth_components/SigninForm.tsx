@@ -1,6 +1,8 @@
 'use client'
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { signin_User } from '@/src/services/auth.service';
 import Link from 'next/link';
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react';
 
@@ -11,6 +13,7 @@ export default function SigninForm() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,11 +27,18 @@ export default function SigninForm() {
 
     setIsLoading(true);
 
-    // Simulate API call
+    // API call
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      console.log('Logged in:', { email, password, rememberMe });
-      // Redirect or handle success here
+      const response = await signin_User(
+
+        {
+          email,
+          password
+        }
+      );
+
+      // Redirect to home page after successful login
+      router.push("/");
     } catch (err) {
       setError('Invalid email or password.');
     } finally {

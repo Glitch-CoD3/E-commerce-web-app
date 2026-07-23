@@ -21,7 +21,7 @@ const Navbar = () => {
                 </Link>
                 <Bell className="w-4 h-4 text-gray-600" />
                 < ShoppingCartIcon />
-                <Link href="/sign-up">Sign in</Link>
+                <Link href="/sign-in">Sign in</Link>
             </div>
 
         </nav>
