@@ -84,7 +84,7 @@ const createCategory = async (req, res) => {
             success: true,
             message: "Category created successfully.",
             total_caretories: total_categories,
-            data: {
+            created_category: {
                 id: result.insertId,
                 category_name,
                 slug,
@@ -128,7 +128,7 @@ const getAllCategories = async (req, res) => {
         return res.status(200).json({
             success: true,
             count: categories.length,
-            data: categories,
+            All_categories: categories,
             links: {
                 create: "/api/v1/categories",
                 parents: "/api/v1/categories/parents"
@@ -178,7 +178,7 @@ const getCategoryById = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: categoryData,
+            Category: categoryData,
             links: {
                 self: `/api/v1/categories/${id}`,
                 update: `/api/v1/categories/${id}`,
@@ -233,7 +233,7 @@ const getCategoryBySlug = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: categoryData,
+            category_BySlug: categoryData,
             links: {
                 self: `/api/v1/categories/slug/${slug}`,
                 by_id: `/api/v1/categories/${category[0].id}`,
@@ -251,7 +251,7 @@ const getCategoryBySlug = async (req, res) => {
 };
 
 /**
- * @method PUT /api/v1/categories/:id
+ * @method PATCH /api/v1/categories/:id
  * @description Update a category by its ID
  * @access Private (Admin)
  */
@@ -266,7 +266,7 @@ const updateCategory = async (req, res) => {
             status
         } = req.body;
 
-        if (!category_name || !parent_category_id || !status || !url_slug) {
+        if (!category_name || !status || !url_slug) {
             return res.status(404).json({
                 success: false,
                 message: "category name, category id, status, url_slug, are required"
@@ -315,7 +315,7 @@ const updateCategory = async (req, res) => {
             [
                 category_name,
                 url_slug,
-                parent_category_id,
+                parent_category_id || null,
                 status,
                 id
             ]
@@ -408,7 +408,7 @@ const getParentCategories = async (req, res) => {
         return res.status(200).json({
             success: true,
             count: parents.length,
-            data: parents,
+            parent_categories: parents,
             links: {
                 all: "/api/v1/categories",
                 create: "/api/v1/categories"
@@ -445,7 +445,7 @@ const getChildCategories = async (req, res) => {
         return res.status(200).json({
             success: true,
             count: children.length,
-            data: children,
+            Child_categories: children,
             links: {
                 parent: `/api/v1/categories/${parentId}`,
                 all_categories: "/api/v1/categories"
@@ -479,7 +479,7 @@ const getAllDeletedCategories = async (req, res) => {
         return res.status(200).json({
             success: true,
             count: categories.length,
-            data: categories,
+            All_Deleted_categories: categories,
             links: {
                 create: "/api/v1/categories",
                 parents: "/api/v1/categories/parents"

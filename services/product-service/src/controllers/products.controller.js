@@ -105,7 +105,7 @@ const createProduct = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: "Product created successfully.",
-            data: {
+            created_product: {
                 id: result.insertId,
                 category_id,
                 product_name,
@@ -210,7 +210,7 @@ const getAllProducts = async (req, res) => {
                 search
             },
 
-            data: products,
+            all_products: products,
 
             links: {
                 self: `/api/v1/products?page=${page}&limit=${limit}&search=${search}`,
@@ -280,7 +280,7 @@ const getProductById = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Product retrieved successfully.",
-            data: product[0],
+            product: product[0],
             links: {
                 self: `/api/v1/products/${id}`,
                 bySlug: `/api/v1/products/slug/${product[0].url_slug}`,
@@ -344,7 +344,7 @@ const getProductBySlug = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Product retrieved successfully.",
-            data: product[0],
+            product: product[0],
             links: {
                 self: `/api/v1/products/slug/${slug}`,
                 byId: `/api/v1/products/${product[0].id}`,
@@ -368,7 +368,7 @@ const getProductBySlug = async (req, res) => {
 
 
 /**
- * @method PUT /api/v1/products/:id
+ * @method PATCH /api/v1/products/:id
  * @description Update a product by its ID
  * @access Private (Admin)
  */
@@ -383,25 +383,13 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        const {
-            category_id,
-            product_name,
-            product_image,
-            description,
-            price,
-            stock_quantity,
-            status
-        } = req.body;
-
-        // Check if product exists
+        // Check product exists
         const [products] = await DB.promise().query(
-            `
-            SELECT *
-            FROM products
-            WHERE id = ?
-              AND deleted_at IS NULL
-            LIMIT 1
-            `,
+            `SELECT *
+             FROM products
+             WHERE id = ?
+               AND deleted_at IS NULL
+             LIMIT 1`,
             [id]
         );
 
@@ -417,97 +405,90 @@ const updateProduct = async (req, res) => {
         const updateFields = [];
         const values = [];
 
-        // Validate category if provided
-        if (category_id !== undefined) {
-            const [category] = await DB.promise().query(
-                `
-                SELECT id
-                FROM categories
-                WHERE id = ?
-                  AND deleted_at IS NULL
-                LIMIT 1
-                `,
-                [category_id]
-            );
+        // Allowed fields for PATCH
+        const allowedFields = [
+            "category_id",
+            "product_name",
+            "description",
+            "short_description",
+            "price",
+            "stock_quantity",
+            "status"
+        ];
 
-            if (!category.length) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Category not found."
-                });
+        for (const field of allowedFields) {
+
+            // Skip fields not included in request
+            if (!Object.prototype.hasOwnProperty.call(req.body, field)) {
+                continue;
             }
 
-            updateFields.push("category_id = ?");
-            values.push(category_id);
-        }
+            const value = req.body[field];
 
-        // Product name & slug
-        let slug = existingProduct.url_slug;
+            switch (field) {
 
-        if (
-            product_name !== undefined &&
-            product_name !== existingProduct.product_name
-        ) {
-            slug = slugify(product_name, {
-                lower: true,
-                strict: true,
-                trim: true
-            });
+                case "category_id": {
 
-            // Check duplicate slug
-            const [slugExists] = await DB.promise().query(
-                `
-                SELECT id
-                FROM products
-                WHERE url_slug = ?
-                  AND id != ?
-                LIMIT 1
-                `,
-                [slug, id]
-            );
+                    const [category] = await DB.promise().query(
+                        `SELECT id
+                         FROM categories
+                         WHERE id = ?
+                           AND deleted_at IS NULL
+                         LIMIT 1`,
+                        [value]
+                    );
 
-            if (slugExists.length) {
-                slug = `${slug}-${Date.now()}`;
+                    if (!category.length) {
+                        return res.status(404).json({
+                            success: false,
+                            message: "Category not found."
+                        });
+                    }
+
+                    updateFields.push("category_id = ?");
+                    values.push(value);
+                    break;
+                }
+
+                case "product_name": {
+
+                    updateFields.push("product_name = ?");
+                    values.push(value);
+
+                    if (value !== existingProduct.product_name) {
+
+                        let slug = slugify(value, {
+                            lower: true,
+                            strict: true,
+                            trim: true
+                        });
+
+                        const [slugExists] = await DB.promise().query(
+                            `SELECT id
+                             FROM products
+                             WHERE url_slug = ?
+                               AND id != ?
+                             LIMIT 1`,
+                            [slug, id]
+                        );
+
+                        if (slugExists.length) {
+                            slug = `${slug}-${Date.now()}`;
+                        }
+
+                        updateFields.push("url_slug = ?");
+                        values.push(slug);
+                    }
+
+                    break;
+                }
+
+                default:
+                    updateFields.push(`${field} = ?`);
+                    values.push(value);
             }
-
-            updateFields.push("product_name = ?");
-            values.push(product_name);
-
-            updateFields.push("url_slug = ?");
-            values.push(slug);
         }
 
-        // Product Image
-        if (product_image !== undefined) {
-            updateFields.push("product_image = ?");
-            values.push(product_image);
-        }
-
-        // Description
-        if (description !== undefined) {
-            updateFields.push("description = ?");
-            values.push(description);
-        }
-
-        // Price
-        if (price !== undefined) {
-            updateFields.push("price = ?");
-            values.push(price);
-        }
-
-        // Stock Quantity
-        if (stock_quantity !== undefined) {
-            updateFields.push("stock_quantity = ?");
-            values.push(stock_quantity);
-        }
-
-        // Status
-        if (status !== undefined) {
-            updateFields.push("status = ?");
-            values.push(status);
-        }
-
-        // Nothing to update
         if (!updateFields.length) {
             return res.status(400).json({
                 success: false,
@@ -515,40 +496,33 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        // Optional: update timestamp
         updateFields.push("updated_at = NOW()");
-
         values.push(id);
 
         await DB.promise().query(
-            `
-            UPDATE products
-            SET ${updateFields.join(", ")}
-            WHERE id = ?
-            `,
+            `UPDATE products
+             SET ${updateFields.join(", ")}
+             WHERE id = ?`,
             values
         );
 
-        // Fetch updated product
         const [updatedProducts] = await DB.promise().query(
-            `
-            SELECT
+            `SELECT
                 p.*,
                 c.category_name,
                 c.url_slug AS category_slug
-            FROM products p
-            LEFT JOIN categories c
+             FROM products p
+             LEFT JOIN categories c
                 ON p.category_id = c.id
-            WHERE p.id = ?
-            LIMIT 1
-            `,
+             WHERE p.id = ?
+             LIMIT 1`,
             [id]
         );
 
         return res.status(200).json({
             success: true,
             message: "Product updated successfully.",
-            data: updatedProducts[0],
+            updated_product: updatedProducts[0],
             links: {
                 self: `/api/v1/products/${id}`,
                 by_slug: `/api/v1/products/slug/${updatedProducts[0].url_slug}`,
@@ -613,7 +587,7 @@ const deleteProduct = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Product deleted successfully.",
-            data: {
+            deleted_product: {
                 id: Number(id),
                 product_name: product[0].product_name,
                 deleted_at: new Date().toISOString()
@@ -646,6 +620,7 @@ const updateProductStatus = async (req, res) => {
         const { id } = req.params;
         const { status } = req.body;
 
+        // Validate product ID
         if (!id || isNaN(id)) {
             return res.status(400).json({
                 success: false,
@@ -653,49 +628,65 @@ const updateProductStatus = async (req, res) => {
             });
         }
 
-        if (!status) {
+        // Validate status
+        if (typeof status !== "string" || status.trim() === "") {
             return res.status(400).json({
                 success: false,
                 message: "Product status is required."
             });
         }
 
+        const normalizedStatus = status.trim().toLowerCase();
 
         const allowedStatuses = [
-            "inactive", "active", "discontinued"
+            "inactive",
+            "active",
+            "discontinued"
         ];
-
-        const normalizedStatus = status.toLowerCase();
 
         if (!allowedStatuses.includes(normalizedStatus)) {
             return res.status(400).json({
                 success: false,
                 message: `Invalid status. Allowed values are: ${allowedStatuses.join(", ")}`
-            })
+            });
         }
 
         // Check product exists
-        const [product] = await DB.promise().query(
+        const [products] = await DB.promise().query(
             `SELECT id, status
              FROM products
              WHERE id = ?
-             AND deleted_at IS NULL
+               AND deleted_at IS NULL
              LIMIT 1`,
             [id]
         );
 
-        if (!product.length) {
+        if (!products.length) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found."
             });
         }
 
+        const product = products[0];
 
+        // Check if status is already the same
+        if (product.status === normalizedStatus) {
+            return res.status(200).json({
+                success: true,
+                message: "Product status is already up to date.",
+                data: {
+                    id: Number(id),
+                    status: product.status
+                }
+            });
+        }
 
+        // Update status
         await DB.promise().query(
             `UPDATE products
-             SET status = ?
+             SET status = ?,
+                 updated_at = NOW()
              WHERE id = ?`,
             [normalizedStatus, id]
         );
@@ -703,9 +694,9 @@ const updateProductStatus = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Product status updated successfully.",
-            data: {
+            updated_status: {
                 id: Number(id),
-                status: status.toLowerCase()
+                status: normalizedStatus
             },
             links: {
                 self: `/api/v1/products/${id}`,
@@ -832,7 +823,7 @@ const getProductsByCategoryId = async (req, res) => {
                 search
             },
 
-            data: products,
+            products: products,
 
             links: {
                 self: `/api/v1/products/category/${categoryId}?page=${page}&limit=${limit}&search=${search}`,
@@ -934,7 +925,7 @@ const getAllDeletedProducts = async (req, res) => {
                 search
             },
 
-            data: products,
+            All_deleted_product: products,
 
             links: {
                 self: `/api/v1/products/deleted?page=${page}&limit=${limit}&search=${search}`,

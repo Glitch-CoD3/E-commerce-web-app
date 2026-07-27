@@ -95,7 +95,7 @@ router.post("/", createCategory);
  * @description Update an existing category
  * @access Private (Admin)
  */
-router.put("/:id", updateCategory);
+router.patch("/:id", updateCategory);
 
 /**
  * @method DELETE /api/v1/categories/:id

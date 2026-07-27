@@ -93,7 +93,7 @@ router.post("/", createProduct);
  * @description Update an existing product
  * @access Private (Admin)
  */
-router.put("/:id", updateProduct);
+router.patch("/:id", updateProduct);
 
 /**
  * @method PATCH /api/v1/products/:id/status
