@@ -1,88 +1,94 @@
-"use client"
+"use client";
 
 import {
     Footprints,
     Glasses,
-    Briefcase,
     Shirt,
-    ShoppingBasket,
-    Hand,
     Venus,
+    Watch,
+    BellElectric,
 } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { CategoryType } from "../services/product.service";
+import { useEffect, useState } from "react";
+import { getCategories } from "../services/product.service";
+import {
+    usePathname,
+    useRouter,
+    useSearchParams,
+} from "next/navigation";
 
-const categories = [
-    {
-        name: "All",
-        icon: <ShoppingBasket className="w-4 h-4" />,
-        slug: "all",
-    },
-    {
-        name: "T-shirts",
-        icon: <Shirt className="w-4 h-4" />,
-        slug: "t-shirts",
-    },
-    {
-        name: "Shoes",
-        icon: <Footprints className="w-4 h-4" />,
-        slug: "shoes",
-    },
-    {
-        name: "Accessories",
-        icon: <Glasses className="w-4 h-4" />,
-        slug: "accessories",
-    },
-    {
-        name: "Bags",
-        icon: <Briefcase className="w-4 h-4" />,
-        slug: "bags",
-    },
-    {
-        name: "Dresses",
-        icon: <Venus className="w-4 h-4" />,
-        slug: "dresses",
-    },
-    {
-        name: "Jackets",
-        icon: <Shirt className="w-4 h-4" />,
-        slug: "jackets",
-    },
-    {
-        name: "Gloves",
-        icon: <Hand className="w-4 h-4" />,
-        slug: "gloves",
-    },
-];
+const iconMap: Record<string, React.ReactNode> = {
+    "t-shirts": <Shirt className="w-4 h-4" />,
+    "Shoes": <Footprints className="w-4 h-4" />,
+    "Accessories": <Glasses className="w-4 h-4" />,
+    "Dresses": <Venus className="w-4 h-4" />,
+    "Watches": <Watch className="w-4 h-4" />,
+    "Watch": <Watch className="w-4 h-4" />,
+    "Face Cream": <BellElectric className="w-4 h-4" />,
+};
+
 
 const Categories = () => {
-    const searchParam = useSearchParams()
-    const pathName = usePathname()
-    const router = useRouter()
-    const selectedCategory = searchParam.get("category");
+    const [categories, setCategories] = useState<CategoryType[]>([]);
 
-    const handleChange = (value: string | null) => {
-        const params = new URLSearchParams(searchParam)
-        params.set("category", value || "all")
-        router.push(`${pathName}?${params.toString()}`, { scroll: false })
-    }
+    const searchParam = useSearchParams();
+    const pathName = usePathname();
+    const router = useRouter();
+
+    const selectedCategory =
+        searchParam.get("category") || "all";
+
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await getCategories();
+
+                setCategories([
+                    {
+                        id: 0,
+                        name: "All",
+                        slug: "all",
+                    },
+                    ...response.data,
+                ]);
+            } catch (error) {
+                console.error("Failed to fetch categories:", error);
+            }
+        };
+
+        fetchCategories();
+    }, []);
+
+    const handleChange = (value: string) => {
+        const params = new URLSearchParams(
+            searchParam.toString()
+        );
+
+        params.set("category", value);
+
+        router.push(`${pathName}?${params.toString()}`, {
+            scroll: false,
+        });
+    };
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-3  md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 bg-gray-100 p-2 rounded-lg mb-4 text-sm  ">
-            {
-                categories.map(category => (
-                    <div className={`flex items-center justify-center gap-2 cursor-pointer px-2 py-1 rounded-md ${category.slug === selectedCategory ? "bg-white" : "text-gray-500"
-                        }`} key={category.name}
-
-                        onClick={() => handleChange(category.slug)}
-                    >
-
-                        {category.icon}
-                        {category.name}
-                    </div>
-                ))
-            }
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 bg-gray-100 p-2 rounded-lg mb-4 text-sm">
+            {categories.map((category) => (
+                <div
+                    key={category.id}
+                    onClick={() => handleChange(category.category_name)}
+                    className={`flex items-center justify-center gap-2 cursor-pointer px-2 py-1 rounded-md transition ${category.category_name === selectedCategory
+                        ? "bg-white shadow"
+                        : "text-gray-500 hover:bg-white"
+                        }`}
+                >
+                    {iconMap[category.category_name]}
+                    <span>{category.category_name}</span>
+                </div>
+            ))}
         </div>
-    )
-}
+
+    );
+};
 
 export default Categories;

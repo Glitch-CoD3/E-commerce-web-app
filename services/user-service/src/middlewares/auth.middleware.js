@@ -15,7 +15,7 @@ export const verifyJWT = async (req, res, next) => {
 
         const [user] = await DB.promise().query(
             `SELECT id, role_id FROM users WHERE id = ?`,
-            [decoded.id.id]
+            [decoded.id]
         );
 
         if (user.length === 0) {

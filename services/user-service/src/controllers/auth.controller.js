@@ -554,7 +554,7 @@ const refresh = async (req, res) => {
         const user = req.user
 
         const [session] = await DB.promise().query(
-            'SELECT user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = ?', [user.id]
+            'SELECT user_id, revoked FROM user_sessions WHERE user_id = ? AND revoked = ?', [user.id, 0]
         );
 
         if (session.length === 0) {
@@ -574,12 +574,12 @@ const refresh = async (req, res) => {
         );
 
         //create new access token
-        const access_token = generate_access_token(decoded.id, decoded.name, decoded.email, decoded.role_id)
+        const access_token = generate_access_token(user.id, user.name, user.email, user.role_id)
 
         //set refreshToken on cookie
         res.cookie('refreshToken', refresh_token, {
             httpOnly: true,
-            secure: true,
+            secure: false,
             sameSite: 'Strict',
             maxAge: 15 * 60 * 1000 // 15 minutes
         })

@@ -103,7 +103,7 @@ export default function OtpForm() {
       alert("OTP Verified Successfully!");
 
       // ✅ redirect
-      router.push("/");
+      router.push("/sign-in");
 
     } catch (error: any) {
       alert(error.response?.data?.message || "Invalid or expired OTP");

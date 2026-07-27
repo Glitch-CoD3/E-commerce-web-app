@@ -5,7 +5,6 @@ import { LucideShoppingCart, ShoppingCart } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { toast } from "react-toastify";
 
 const ProductCard = ({ product }: { product: ProductType }) => {
   const [productTypes, setProductTypes] = useState(
@@ -29,7 +28,8 @@ const ProductCard = ({ product }: { product: ProductType }) => {
       <Link href={`/product/${product.id}`}>
 
         <div className="relative aspect-2/3">
-          <Image src={product.images[productTypes.color]} alt={product.name} fill className="object-cover hover:scale-105 transition-all duration-300" />
+          <Image src={product.images[productTypes.color]} alt={product.name} fill sizes="(max-width: 640px) 100vw, 
+         (max-width: 1024px) 50vw, 25vw"  preload className="object-cover hover:scale-105 transition-all duration-300" />
         </div>
 
       </Link>
@@ -64,7 +64,7 @@ const ProductCard = ({ product }: { product: ProductType }) => {
             <div className="flex items-center gap-1">
               {
                 product.colors.map(color => (
-                  <div className={`cursor-pointer border-1 ${productTypes.color === color ? "border-gray-500" : "border-gray-300"} rounded-full p-[1.2px] `} key={color} onClick={() => handleProductTypes({ type: "color", value: color })}>
+                  <div className={`cursor-pointer border-2 ${productTypes.color === color ? "border-gray-500" : "border-gray-300"} rounded-full p-[1.2px] `} key={color} onClick={() => handleProductTypes({ type: "color", value: color })}>
                     <div className="w-6 h-6 rounded-full" style={{ backgroundColor: color }} />
                   </div>
                 ))
