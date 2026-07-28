@@ -10,8 +10,9 @@ const createProduct = async (req, res) => {
     try {
         const {
             category_id,
+            brand_id,
             product_name,
-            product_image,
+            short_description,
             description,
             price,
             stock_quantity,
@@ -21,12 +22,12 @@ const createProduct = async (req, res) => {
         if (
             !category_id ||
             !product_name ||
-            !price
+            !price || !brand_id
         ) {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Category, product name, price and stock quantity are required."
+                    "Category Id,Brand Id, product name, price and stock quantity are required."
             });
         }
 
@@ -53,6 +54,25 @@ const createProduct = async (req, res) => {
                 message: "Category not found."
             });
         }
+
+
+        // Check brand exists
+        const [brand] = await DB.promise().query(
+            `SELECT id, brand_name
+             FROM brands
+             WHERE id = ?
+             LIMIT 1`,
+            [brand_id]
+        );
+
+        if (!brand.length) {
+            return res.status(404).json({
+                success: false,
+                message: "Brand not found."
+            });
+        }
+
+        const brand_name = brand[0].brand_name;
 
         // Generate slug
         let slug = slugify(product_name, {
@@ -81,21 +101,23 @@ const createProduct = async (req, res) => {
             `INSERT INTO products
             (
                 category_id,
+                brand_id,
                 product_name,
-                product_image,
                 url_slug,
                 description,
+                short_description,
                 price,
                 stock_quantity,
                 status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 category_id,
+                brand_id,
                 product_name,
-                product_image || "",
                 slug,
                 description || "",
+                short_description || "",
                 price,
                 stock_quantity,
                 productStatus
@@ -108,10 +130,12 @@ const createProduct = async (req, res) => {
             created_product: {
                 id: result.insertId,
                 category_id,
+                brand_id,
+                brand_name,
                 product_name,
-                product_image,
                 url_slug: slug,
                 description,
+                short_description,
                 price,
                 stock_quantity,
                 status: productStatus
@@ -181,20 +205,26 @@ const getAllProducts = async (req, res) => {
         // Get products
         const [products] = await DB.promise().query(
             `
-            SELECT
-                p.*,
-                c.category_name,
-                c.url_slug AS category_slug
-            FROM products p
-            LEFT JOIN categories c
-                ON p.category_id = c.id
-            ${whereClause}
-            ORDER BY p.created_at DESC
-            LIMIT ?
-            OFFSET ?
-            `,
+    SELECT
+        p.*,
+        c.category_name,
+        c.url_slug AS category_slug,
+        b.brand_name AS brand_name,
+        b.*
+    FROM products p
+    LEFT JOIN categories c
+        ON p.category_id = c.id
+    LEFT JOIN brands b
+        ON p.brand_id = b.id
+    ${whereClause}
+    ORDER BY p.created_at DESC
+    LIMIT ?
+    OFFSET ?
+    `,
             [...values, limit, offset]
         );
+
+
 
         return res.status(200).json({
             success: true,
@@ -256,17 +286,22 @@ const getProductById = async (req, res) => {
 
         const [product] = await DB.promise().query(
             `
-            SELECT
-                p.*,
-                c.category_name,
-                c.url_slug AS category_slug
-            FROM products p
-            LEFT JOIN categories c
-                ON p.category_id = c.id
-            WHERE p.id = ?
-              AND p.deleted_at IS NULL
-            LIMIT 1
-            `,
+        SELECT
+        p.*,
+        c.category_name,
+        c.url_slug AS category_slug,
+        b.id AS brand_id,
+        b.brand_name,
+        b.logo AS brand_logo
+    FROM products p
+    LEFT JOIN categories c
+        ON p.category_id = c.id
+    LEFT JOIN brands b
+        ON p.brand_id = b.id
+    WHERE p.id = ?
+      AND p.deleted_at IS NULL
+    LIMIT 1
+    `,
             [id]
         );
 
@@ -282,12 +317,12 @@ const getProductById = async (req, res) => {
             message: "Product retrieved successfully.",
             product: product[0],
             links: {
-                self: `/api/v1/products/${id}`,
-                bySlug: `/api/v1/products/slug/${product[0].url_slug}`,
-                category: `/api/v1/categories/${product[0].category_id}`,
-                update: `/api/v1/products/${id}`,
-                updateStatus: `/api/v1/products/${id}/status`,
-                delete: `/api/v1/products/${id}`,
+                self: `/ api / v1 / products / ${id}`,
+                bySlug: `/ api / v1 / products / slug / ${product[0].url_slug}`,
+                category: `/ api / v1 / categories / ${product[0].category_id}`,
+                update: `/ api / v1 / products / ${id}`,
+                updateStatus: `/ api / v1 / products / ${id} / status`,
+                delete: `/ api / v1 / products / ${id}`,
                 allProducts: "/api/v1/products"
             }
         });
@@ -322,13 +357,13 @@ const getProductBySlug = async (req, res) => {
             `
             SELECT
                 p.*,
-                c.category_name,
-                c.url_slug AS category_slug
+            c.category_name,
+            c.url_slug AS category_slug
             FROM products p
             LEFT JOIN categories c
                 ON p.category_id = c.id
             WHERE p.url_slug = ?
-              AND p.deleted_at IS NULL
+            AND p.deleted_at IS NULL
             LIMIT 1
             `,
             [slug]
@@ -346,12 +381,12 @@ const getProductBySlug = async (req, res) => {
             message: "Product retrieved successfully.",
             product: product[0],
             links: {
-                self: `/api/v1/products/slug/${slug}`,
-                byId: `/api/v1/products/${product[0].id}`,
-                category: `/api/v1/categories/${product[0].category_id}`,
-                update: `/api/v1/products/${product[0].id}`,
-                updateStatus: `/api/v1/products/${product[0].id}/status`,
-                delete: `/api/v1/products/${product[0].id}`,
+                self: `/ api / v1 / products / slug / ${slug}`,
+                byId: `/ api / v1 / products / ${product[0].id}`,
+                category: `/ api / v1 / categories / ${product[0].category_id}`,
+                update: `/ api / v1 / products / ${product[0].id}`,
+                updateStatus: `/ api / v1 / products / ${product[0].id} / status`,
+                delete: `/ api / v1 / products / ${product[0].id}`,
                 allProducts: "/api/v1/products"
             }
         });
@@ -386,9 +421,9 @@ const updateProduct = async (req, res) => {
         // Check product exists
         const [products] = await DB.promise().query(
             `SELECT *
-             FROM products
+        FROM products
              WHERE id = ?
-               AND deleted_at IS NULL
+            AND deleted_at IS NULL
              LIMIT 1`,
             [id]
         );
@@ -433,7 +468,7 @@ const updateProduct = async (req, res) => {
                         `SELECT id
                          FROM categories
                          WHERE id = ?
-                           AND deleted_at IS NULL
+            AND deleted_at IS NULL
                          LIMIT 1`,
                         [value]
                     );
@@ -467,13 +502,13 @@ const updateProduct = async (req, res) => {
                             `SELECT id
                              FROM products
                              WHERE url_slug = ?
-                               AND id != ?
-                             LIMIT 1`,
+            AND id != ?
+            LIMIT 1`,
                             [slug, id]
                         );
 
                         if (slugExists.length) {
-                            slug = `${slug}-${Date.now()}`;
+                            slug = `${slug} - ${Date.now()}`;
                         }
 
                         updateFields.push("url_slug = ?");
@@ -484,7 +519,7 @@ const updateProduct = async (req, res) => {
                 }
 
                 default:
-                    updateFields.push(`${field} = ?`);
+                    updateFields.push(`${field} = ? `);
                     values.push(value);
             }
         }
@@ -502,20 +537,20 @@ const updateProduct = async (req, res) => {
         await DB.promise().query(
             `UPDATE products
              SET ${updateFields.join(", ")}
-             WHERE id = ?`,
+             WHERE id = ? `,
             values
         );
 
         const [updatedProducts] = await DB.promise().query(
             `SELECT
                 p.*,
-                c.category_name,
-                c.url_slug AS category_slug
+            c.category_name,
+            c.url_slug AS category_slug
              FROM products p
              LEFT JOIN categories c
                 ON p.category_id = c.id
              WHERE p.id = ?
-             LIMIT 1`,
+            LIMIT 1`,
             [id]
         );
 
@@ -524,11 +559,11 @@ const updateProduct = async (req, res) => {
             message: "Product updated successfully.",
             updated_product: updatedProducts[0],
             links: {
-                self: `/api/v1/products/${id}`,
-                by_slug: `/api/v1/products/slug/${updatedProducts[0].url_slug}`,
-                category: `/api/v1/categories/${updatedProducts[0].category_id}`,
+                self: `/ api / v1 / products / ${id}`,
+                by_slug: `/ api / v1 / products / slug / ${updatedProducts[0].url_slug}`,
+                category: `/ api / v1 / categories / ${updatedProducts[0].category_id}`,
                 all_products: "/api/v1/products",
-                delete: `/api/v1/products/${id}`
+                delete: `/ api / v1 / products / ${id}`
             }
         });
 
@@ -564,7 +599,7 @@ const deleteProduct = async (req, res) => {
             `SELECT id, product_name
              FROM products
              WHERE id = ?
-             AND deleted_at IS NULL
+            AND deleted_at IS NULL
              LIMIT 1`,
             [id]
         );
@@ -580,7 +615,7 @@ const deleteProduct = async (req, res) => {
         await DB.promise().query(
             `UPDATE products
              SET deleted_at = NOW()
-             WHERE id = ?`,
+             WHERE id = ? `,
             [id]
         );
 
@@ -647,7 +682,7 @@ const updateProductStatus = async (req, res) => {
         if (!allowedStatuses.includes(normalizedStatus)) {
             return res.status(400).json({
                 success: false,
-                message: `Invalid status. Allowed values are: ${allowedStatuses.join(", ")}`
+                message: `Invalid status.Allowed values are: ${allowedStatuses.join(", ")}`
             });
         }
 
@@ -656,7 +691,7 @@ const updateProductStatus = async (req, res) => {
             `SELECT id, status
              FROM products
              WHERE id = ?
-               AND deleted_at IS NULL
+            AND deleted_at IS NULL
              LIMIT 1`,
             [id]
         );
@@ -686,8 +721,8 @@ const updateProductStatus = async (req, res) => {
         await DB.promise().query(
             `UPDATE products
              SET status = ?,
-                 updated_at = NOW()
-             WHERE id = ?`,
+            updated_at = NOW()
+             WHERE id = ? `,
             [normalizedStatus, id]
         );
 
@@ -699,10 +734,10 @@ const updateProductStatus = async (req, res) => {
                 status: normalizedStatus
             },
             links: {
-                self: `/api/v1/products/${id}`,
-                product: `/api/v1/products/${id}`,
-                update: `/api/v1/products/${id}`,
-                delete: `/api/v1/products/${id}`,
+                self: `/ api / v1 / products / ${id}`,
+                product: `/ api / v1 / products / ${id}`,
+                update: `/ api / v1 / products / ${id}`,
+                delete: `/ api / v1 / products / ${id}`,
                 allProducts: "/api/v1/products"
             }
         });
@@ -745,7 +780,7 @@ const getProductsByCategoryId = async (req, res) => {
             `SELECT id, category_name
              FROM categories
              WHERE id = ?
-             LIMIT 1`,
+            LIMIT 1`,
             [categoryId]
         );
 
@@ -759,20 +794,20 @@ const getProductsByCategoryId = async (req, res) => {
         let whereClause = `
             WHERE p.category_id = ?
             AND p.deleted_at IS NULL
-        `;
+            `;
 
         const values = [categoryId];
 
         if (search) {
             whereClause += `
-                AND (
-                    p.product_name LIKE ?
-                    OR p.description LIKE ?
-                    OR p.url_slug LIKE ?
+                AND(
+                p.product_name LIKE ?
+                OR p.description LIKE ?
+                OR p.url_slug LIKE ?
                 )
-            `;
+                `;
 
-            const keyword = `%${search}%`;
+            const keyword = `% ${search} % `;
             values.push(keyword, keyword, keyword);
         }
 
@@ -794,16 +829,16 @@ const getProductsByCategoryId = async (req, res) => {
             `
             SELECT
                 p.*,
-                c.category_name,
-                c.url_slug AS category_slug
+            c.category_name,
+            c.url_slug AS category_slug
             FROM products p
             LEFT JOIN categories c
                 ON p.category_id = c.id
             ${whereClause}
             ORDER BY p.created_at DESC
             LIMIT ?
-            OFFSET ?
-            `,
+                OFFSET ?
+                    `,
             [...values, limit, offset]
         );
 
@@ -826,16 +861,16 @@ const getProductsByCategoryId = async (req, res) => {
             products: products,
 
             links: {
-                self: `/api/v1/products/category/${categoryId}?page=${page}&limit=${limit}&search=${search}`,
-                category: `/api/v1/categories/${categoryId}`,
+                self: `/ api / v1 / products / category / ${categoryId} ? page = ${page} & limit=${limit} & search=${search}`,
+                category: `/ api / v1 / categories / ${categoryId}`,
                 allProducts: "/api/v1/products",
-                first: `/api/v1/products/category/${categoryId}?page=1&limit=${limit}&search=${search}`,
-                last: `/api/v1/products/category/${categoryId}?page=${totalPages}&limit=${limit}&search=${search}`,
+                first: `/ api / v1 / products / category / ${categoryId} ? page = 1 & limit=${limit} & search=${search}`,
+                last: `/ api / v1 / products / category / ${categoryId} ? page = ${totalPages} & limit=${limit} & search=${search}`,
                 previous: page > 1
-                    ? `/api/v1/products/category/${categoryId}?page=${page - 1}&limit=${limit}&search=${search}`
+                    ? `/ api / v1 / products / category / ${categoryId} ? page = ${page - 1}& limit=${limit}& search=${search} `
                     : null,
                 next: page < totalPages
-                    ? `/api/v1/products/category/${categoryId}?page=${page + 1}&limit=${limit}&search=${search}`
+                    ? `/ api / v1 / products / category / ${categoryId}?page = ${page + 1}& limit=${limit}& search=${search} `
                     : null
             }
         });
@@ -869,14 +904,14 @@ const getAllDeletedProducts = async (req, res) => {
 
         if (search) {
             whereClause += `
-                AND (
-                    p.product_name LIKE ?
-                    OR p.description LIKE ?
-                    OR p.url_slug LIKE ?
+    AND(
+        p.product_name LIKE ?
+        OR p.description LIKE ?
+        OR p.url_slug LIKE ?
                 )
-            `;
+        `;
 
-            const keyword = `%${search}%`;
+            const keyword = `% ${search}% `;
             values.push(keyword, keyword, keyword);
         }
 
@@ -886,7 +921,7 @@ const getAllDeletedProducts = async (req, res) => {
             SELECT COUNT(*) AS total
             FROM products p
             ${whereClause}
-            `,
+    `,
             values
         );
 
@@ -896,17 +931,17 @@ const getAllDeletedProducts = async (req, res) => {
         // Fetch deleted products
         const [products] = await DB.promise().query(
             `
-            SELECT
-                p.*,
-                c.category_name,
-                c.url_slug AS category_slug
+    SELECT
+    p.*,
+        c.category_name,
+        c.url_slug AS category_slug
             FROM products p
             LEFT JOIN categories c
                 ON p.category_id = c.id
             ${whereClause}
             ORDER BY p.deleted_at DESC
-            LIMIT ?
-            OFFSET ?
+    LIMIT ?
+        OFFSET ?
             `,
             [...values, limit, offset]
         );
@@ -928,16 +963,16 @@ const getAllDeletedProducts = async (req, res) => {
             All_deleted_product: products,
 
             links: {
-                self: `/api/v1/products/deleted?page=${page}&limit=${limit}&search=${search}`,
-                first: `/api/v1/products/deleted?page=1&limit=${limit}&search=${search}`,
-                last: `/api/v1/products/deleted?page=${totalPages}&limit=${limit}&search=${search}`,
+                self: `/ api / v1 / products / deleted ? page = ${page}& limit=${limit}& search=${search} `,
+                first: `/ api / v1 / products / deleted ? page = 1 & limit=${limit}& search=${search} `,
+                last: `/ api / v1 / products / deleted ? page = ${totalPages}& limit=${limit}& search=${search} `,
                 previous:
                     page > 1
-                        ? `/api/v1/products/deleted?page=${page - 1}&limit=${limit}&search=${search}`
+                        ? `/ api / v1 / products / deleted ? page = ${page - 1}& limit=${limit}& search=${search} `
                         : null,
                 next:
                     page < totalPages
-                        ? `/api/v1/products/deleted?page=${page + 1}&limit=${limit}&search=${search}`
+                        ? `/ api / v1 / products / deleted ? page = ${page + 1}& limit=${limit}& search=${search} `
                         : null
             }
         });
