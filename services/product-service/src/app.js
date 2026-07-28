@@ -19,10 +19,12 @@ app.use(morgan('dev'));
 // Routes
 import categoriesRoutes from "./routes/categories.routes.js";
 import productRoutes from "./routes/products.routes.js";
-import productVariant from './routes/product_variant.routes.js'
+import productVariant from "./routes/product_variant.routes.js"
+import brands from "./routes/brand.routes.js"
 
 
 // API Routes
+app.use("/api/v1/brands", brands);
 app.use("/api/v1/categories", categoriesRoutes);
 app.use("/api/v1/products", productRoutes);
 app.use('/api/v1/product-variants', productVariant)
