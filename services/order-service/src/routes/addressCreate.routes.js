@@ -36,6 +36,6 @@ router.get('/:id', getShippingAddressById);
  * @description Update an existing shipping address
  * @access Private
  */
-router.put('/:id', updateShippingAddress);
+router.patch('/:id', updateShippingAddress);
 
 export default router;

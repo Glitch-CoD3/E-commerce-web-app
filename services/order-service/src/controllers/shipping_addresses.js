@@ -95,11 +95,11 @@ const updateShippingAddress = async (req, res) => {
             zip_code
         } = req.body;
 
-
-
-        // Check if the address belongs to the authenticated user
+        // ===========================
+        // Check Address Exists & Belongs to User
+        // ===========================
         const [address] = await DB.promise().query(
-            `SELECT id
+            `SELECT id, full_address, city, state, zip_code, is_default
              FROM shipping_addresses
              WHERE id = ? AND user_id = ?`,
             [address_id, user_id]
@@ -112,29 +112,84 @@ const updateShippingAddress = async (req, res) => {
             });
         }
 
-        // Update address
-        await DB.promise().query(
-            `UPDATE shipping_addresses
-             SET
-                full_address = ?,
-                city = ?,
-                state = ?,
-                is_default = ?,
-                zip_code = ?,
-                updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?`,
-            [
-                full_address,
-                city,
-                state,
-                is_default,
-                zip_code || null,
-                address_id
-            ]
-        );
+        // ===========================
+        // Helper: Check if value is truly provided
+        // ===========================
+        const isValid = (val) => val !== undefined && val !== null && String(val).trim() !== "";
 
-        const [Updated_address] = await DB.promise().query(
-            `SELECT id, full_address, city, state, zip_code, is_default
+        if (!isValid(full_address) && !isValid(city) && !isValid(state) && !isValid(zip_code) && is_default === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one valid field (full_address, city, state, zip_code, is_default) is required to update."
+            });
+        }
+
+        // ===========================
+        // Dynamic Update Construction
+        // ===========================
+        const updates = [];
+        const params = [];
+
+        if (isValid(full_address)) {
+            updates.push("full_address = ?");
+            params.push(String(full_address).trim());
+        }
+        if (isValid(city)) {
+            updates.push("city = ?");
+            params.push(String(city).trim());
+        }
+        if (isValid(state)) {
+            updates.push("state = ?");
+            params.push(String(state).trim());
+        }
+        if (isValid(zip_code)) {
+            updates.push("zip_code = ?");
+            params.push(String(zip_code).trim());
+        }
+        if (is_default !== undefined) {
+            updates.push("is_default = ?");
+            params.push(Boolean(is_default) ? 1 : 0);
+        }
+
+        updates.push("updated_at = CURRENT_TIMESTAMP");
+
+        // Handle transaction for resetting default address flags if setting this one to true
+        const connection = await DB.promise().getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            if (is_default === true || is_default === 1 || is_default === "1") {
+                await connection.query(
+                    `UPDATE shipping_addresses 
+                     SET is_default = 0 
+                     WHERE user_id = ? AND id != ?`,
+                    [user_id, address_id]
+                );
+            }
+
+            params.push(address_id, user_id);
+
+            await connection.query(
+                `UPDATE shipping_addresses
+                 SET ${updates.join(", ")}
+                 WHERE id = ? AND user_id = ?`,
+                params
+            );
+
+            await connection.commit();
+        } catch (txnError) {
+            await connection.rollback();
+            throw txnError;
+        } finally {
+            connection.release();
+        }
+
+        // ===========================
+        // Fetch Updated Record
+        // ===========================
+        const [updatedAddress] = await DB.promise().query(
+            `SELECT id, user_id, full_address, city, state, zip_code, is_default, created_at, updated_at
              FROM shipping_addresses
              WHERE id = ? AND user_id = ?`,
             [address_id, user_id]
@@ -142,16 +197,20 @@ const updateShippingAddress = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            address: Updated_address[0],
-            message: "Shipping address updated successfully."
+            message: "Shipping address updated successfully.",
+            data: updatedAddress[0],
+            links: {
+                self: `/api/v1/shipping-addresses/${address_id}`,
+                user_addresses: `/api/v1/shipping-addresses`
+            }
         });
 
     } catch (error) {
-        console.error(error);
+        console.error("Update Shipping Address Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Internal Server Error"
+            message: "Internal server error."
         });
     }
 };
