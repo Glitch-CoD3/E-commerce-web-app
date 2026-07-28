@@ -13,7 +13,7 @@ const getProductsByIds = async (productIds, token) => {
         );
 
 
-        return response.data.data;
+        return response.data.product;
 
     } catch (error) {
         console.log("Axios Error:");

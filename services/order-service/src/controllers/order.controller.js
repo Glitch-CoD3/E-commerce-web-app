@@ -43,8 +43,9 @@ const createOrder = async (req, res) => {
         //---------------------------------------------------
 
         const carts = await getAllCart(token);
+        console.log(carts)
 
-        if (carts.length === 0) {
+        if (carts.data.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: "Cart is empty"
@@ -1026,6 +1027,7 @@ const getAllOrders = async (req, res) => {
                 shipping_charge,
                 net_amount,
                 status,
+                payment_status,
                 created_at,
                 updated_at
             FROM orders
@@ -1062,7 +1064,7 @@ const getAllOrders = async (req, res) => {
 
 
 /**
- * @method PATCH /api/v1/orders/admin/dashboard
+ * @method GET /api/v1/orders/admin/dashboard
  * @description Order Dashboard Statistics  (
  *  per year and per month{
     "totalOrders": 1250 date wise,
@@ -1079,57 +1081,64 @@ const getAllOrders = async (req, res) => {
 
 const orderDashboardStatistics = async (req, res) => {
     try {
-
         //---------------------------------------------------
-        // Query Params
+        // 1. Query Params & Input Validation
         //---------------------------------------------------
+        const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+        const month = req.query.month ? parseInt(req.query.month, 10) : null;
 
-        const year = parseInt(req.query.year) || new Date().getFullYear();
-        const month = req.query.month ? parseInt(req.query.month) : null;
-
-        //---------------------------------------------------
-        // Build WHERE Clause
-        //---------------------------------------------------
-
-        let whereClause = `WHERE YEAR(created_at) = ?`;
-        const values = [year];
-
-        if (month) {
-            whereClause += ` AND MONTH(created_at) = ?`;
-            values.push(month);
+        if (month !== null && (isNaN(month) || month < 1 || month > 12)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid month parameter. Must be an integer between 1 and 12."
+            });
         }
 
         //---------------------------------------------------
-        // Get Dashboard Statistics
+        // 2. High-Performance Date Range (Index Friendly)
         //---------------------------------------------------
+        let startDate, endDate;
 
-        const [result] = await connection.query(
+        if (month) {
+            // Start of the specific month
+            startDate = new Date(year, month - 1, 1);
+            // Start of the next month
+            endDate = new Date(year, month, 1);
+        } else {
+            // Start of the year
+            startDate = new Date(year, 0, 1);
+            // Start of the next year
+            endDate = new Date(year + 1, 0, 1);
+        }
+
+        const whereClause = `WHERE created_at >= ? AND created_at < ?`;
+        const values = [startDate, endDate];
+
+        //---------------------------------------------------
+        // 3. Optimized Aggregate Query
+        //---------------------------------------------------
+        const [rows] = await connection.query(
             `
             SELECT
                 COUNT(*) AS totalOrders,
-
+                
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingOrders,
-
                 SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmedOrders,
-
                 SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processingOrders,
-
                 SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) AS shippedOrders,
-
                 SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS deliveredOrders,
-
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelledOrders,
+
+                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) AS totalPaidOrders,
 
                 COALESCE(
                     SUM(
-                        CASE
-                            WHEN payment_status = 'paid'
-                            AND status <> 'cancelled'
-                            THEN total_amount
-                            ELSE 0
+                        CASE 
+                            WHEN payment_status = 'paid' AND status <> 'cancelled' 
+                            THEN total_amount 
+                            ELSE 0 
                         END
-                    ),
-                    0
+                    ), 0
                 ) AS totalRevenue
 
             FROM orders
@@ -1138,28 +1147,78 @@ const orderDashboardStatistics = async (req, res) => {
             values
         );
 
-        //---------------------------------------------------
-        // Response
-        //---------------------------------------------------
+        const rawData = rows[0];
 
+        //---------------------------------------------------
+        // 4. Parse DB Strings to Numbers & Calculate Derived Metrics
+        //---------------------------------------------------
+        const totalOrders = Number(rawData.totalOrders || 0);
+        const pendingOrders = Number(rawData.pendingOrders || 0);
+        const confirmedOrders = Number(rawData.confirmedOrders || 0);
+        const processingOrders = Number(rawData.processingOrders || 0);
+        const shippedOrders = Number(rawData.shippedOrders || 0);
+        const deliveredOrders = Number(rawData.deliveredOrders || 0);
+        const cancelledOrders = Number(rawData.cancelledOrders || 0);
+        const totalPaidOrders = Number(rawData.totalPaidOrders || 0);
+        const totalRevenue = parseFloat(rawData.totalRevenue || 0);
+
+        // Calculate Average Order Value (AOV)
+        const averageOrderValue = totalPaidOrders > 0
+            ? parseFloat((totalRevenue / totalPaidOrders).toFixed(2))
+            : 0;
+
+        // Calculate Order Fulfillment & Cancellation rates
+        const completionRatePercentage = totalOrders > 0
+            ? parseFloat(((deliveredOrders / totalOrders) * 100).toFixed(2))
+            : 0;
+
+        const cancellationRatePercentage = totalOrders > 0
+            ? parseFloat(((cancelledOrders / totalOrders) * 100).toFixed(2))
+            : 0;
+
+        // Orders needing action by store fulfillment team
+        const actionableOrdersCount = pendingOrders + confirmedOrders + processingOrders;
+
+        //---------------------------------------------------
+        // 5. Response Structured for Admin Frontend
+        //---------------------------------------------------
         return res.status(200).json({
             success: true,
-            period: {
+            filter: {
                 year,
-                month
+                month,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
             },
-            statistics: result[0]
+            statistics: {
+                overview: {
+                    totalRevenue,
+                    averageOrderValue,
+                    actionableOrdersCount
+                },
+                orderCounts: {
+                    total: totalOrders,
+                    pending: pendingOrders,
+                    confirmed: confirmedOrders,
+                    processing: processingOrders,
+                    shipped: shippedOrders,
+                    delivered: deliveredOrders,
+                    cancelled: cancelledOrders
+                },
+                rates: {
+                    completionRatePercentage,
+                    cancellationRatePercentage
+                }
+            }
         });
 
     } catch (error) {
-
         console.error("Dashboard Statistics Error:", error);
 
         return res.status(500).json({
             success: false,
             message: "Internal server error"
         });
-
     }
 };
 
@@ -1303,9 +1362,8 @@ const getOrderDetailsByOrderId = async (req, res) => {
 
 const updatePaymentStatus = async (req, res) => {
     try {
-
         const { orderId } = req.params;
-        const { payment_status } = req.body;
+        let { payment_status } = req.body; // Use 'let' so it can be transformed
 
         //---------------------------------------------------
         // Validation
@@ -1318,17 +1376,28 @@ const updatePaymentStatus = async (req, res) => {
             });
         }
 
+        if (!payment_status || typeof payment_status !== "string") {
+            return res.status(400).json({
+                success: false,
+                message: "Payment status string is required"
+            });
+        }
+
+        // Convert to uppercase safely
+        payment_status = payment_status.toUpperCase();
+
+        // Standardized all allowed values to UPPERCASE
         const allowedPaymentStatus = [
-            "pending",
+            "PENDING",
             "PAID",
             "UNPAID",
-            "refunded"
+            "REFUNDED"
         ];
 
         if (!allowedPaymentStatus.includes(payment_status)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid payment status"
+                message: "Invalid payment status. Allowed: PENDING, PAID, UNPAID, REFUNDED"
             });
         }
 
@@ -1340,7 +1409,7 @@ const updatePaymentStatus = async (req, res) => {
             `
             SELECT id, payment_status
             FROM orders
-            WHERE id = ?
+            WHERE id = ? AND status <> 'cancelled'
             `,
             [orderId]
         );
@@ -1348,15 +1417,16 @@ const updatePaymentStatus = async (req, res) => {
         if (orders.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: "Order not found"
+                message: "Order not found or order has been cancelled"
             });
         }
 
-        //---------------------------------------------------
-        // Already Updated
-        //---------------------------------------------------
+        // Handle DB comparison safely (case-insensitive check against existing record)
+        const currentDbStatus = orders[0].payment_status
+            ? orders[0].payment_status.toUpperCase()
+            : "";
 
-        if (orders[0].payment_status === payment_status) {
+        if (currentDbStatus === payment_status) {
             return res.status(400).json({
                 success: false,
                 message: `Payment is already ${payment_status}`
@@ -1395,17 +1465,220 @@ const updatePaymentStatus = async (req, res) => {
         });
 
     } catch (error) {
-
         console.error("Update Payment Status Error:", error);
 
         return res.status(500).json({
             success: false,
             message: "Internal server error"
         });
-
     }
 };
 
+/**
+ * @method GET /api/v1/orders/admin/analytics/top-selling-products
+ * @description Get top selling products by sales volume and revenue
+ * @access Private (Admin)
+ */
+const getTopSellingProducts = async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit, 10) || 5;
+        const vendorId = req.query.vendorId || null; // Optional vendor filter
+
+        let vendorWhere = "";
+        const values = [];
+
+        if (vendorId) {
+            vendorWhere = "WHERE p.vendor_id = ?";
+            values.push(vendorId);
+        }
+
+        values.push(limit);
+
+        const [products] = await connection.query(
+            `
+            SELECT 
+                p.id AS productId,
+                p.product_name AS productName,
+                p.price,
+                SUM(oi.quantity) AS totalUnitsSold,
+                COALESCE(SUM(oi.quantity * oi.price), 0) AS totalRevenueGenerated
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.id
+            JOIN orders o ON oi.order_id = o.id
+            ${vendorWhere}
+            ${vendorWhere ? "AND" : "WHERE"} LOWER(o.payment_status) = 'paid' 
+            AND LOWER(o.status) <> 'cancelled'
+            GROUP BY p.id, p.product_name, p.price
+            ORDER BY totalUnitsSold DESC
+            LIMIT ?
+            `,
+            values
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Top Selling Products",
+            data: products
+        });
+    } catch (error) {
+        console.error("Top Selling Products Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/sales-trend
+ * @description Get sales and revenue trends over time (monthly/daily)
+ * @access Private (Admin)
+ */
+
+const getSalesTrendOverTime = async (req, res) => {
+    try {
+        const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+        const groupBy = req.query.groupBy || 'month'; // 'month' or 'day'
+
+        let dateGroupSql = "DATE_FORMAT(created_at, '%Y-%m')"; // Default: monthly chart
+        if (groupBy === 'day') {
+            dateGroupSql = "DATE_FORMAT(created_at, '%Y-%m-%d')";
+        }
+
+        const startDate = new Date(year, 0, 1);
+        const endDate = new Date(year + 1, 0, 1);
+
+        const [trends] = await connection.query(
+            `
+            SELECT 
+                ${dateGroupSql} AS period,
+                COUNT(id) AS totalOrders,
+                COALESCE(
+                    SUM(CASE WHEN LOWER(payment_status) = 'paid' AND LOWER(status) <> 'cancelled' THEN total_amount ELSE 0 END), 
+                    0
+                ) AS revenue
+            FROM orders
+            WHERE created_at >= ? AND created_at < ?
+            GROUP BY period
+            ORDER BY period ASC
+            `,
+            [startDate, endDate]
+        );
+
+        return res.status(200).json({
+            success: true,
+            year,
+            groupBy,
+            trends
+        });
+    } catch (error) {
+        console.error("Sales Trend Analytics Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/inventory-alerts
+ * @description Get low stock and out-of-stock product warnings
+ * @access Private (Admin)
+ */
+const getInventoryAlerts = async (req, res) => {
+    try {
+        const threshold = parseInt(req.query.threshold, 10) || 10; // Default: low stock <= 10 items
+        const vendorId = req.user?.vendorId || req.query.vendorId;
+
+        let whereClause = "WHERE stock_quantity <= ?";
+        const values = [threshold];
+
+        if (vendorId) {
+            whereClause += " AND vendor_id = ?";
+            values.push(vendorId);
+        }
+
+        const [lowStockItems] = await connection.query(
+            `
+            SELECT 
+                id AS productId,
+                product_name AS productName,
+                stock_quantity,
+                price,
+                CASE 
+                    WHEN stock_quantity = 0 THEN 'OUT_OF_STOCK'
+                    ELSE 'LOW_STOCK'
+                END AS stockStatus
+            FROM products
+            ${whereClause}
+            ORDER BY stock_quantity ASC
+            `,
+            values
+        );
+
+        return res.status(200).json({
+            success: true,
+            threshold,
+            count: lowStockItems.length,
+            items: lowStockItems
+        });
+    } catch (error) {
+        console.error("Inventory Alerts Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/customer-metrics
+ * @description Get customer lifetime value and repeat purchase analytics
+ * @access Private (Admin)
+ */
+const getCustomerAnalytics = async (req, res) => {
+    try {
+        const [customerMetrics] = await connection.query(`
+            SELECT 
+                COUNT(DISTINCT u.id) AS totalCustomers,
+                COUNT(DISTINCT CASE WHEN order_counts.total_orders > 1 THEN u.id END) AS repeatCustomers,
+                COUNT(DISTINCT CASE WHEN order_counts.total_orders = 1 THEN u.id END) AS singlePurchaseCustomers,
+                COALESCE(AVG(order_counts.customer_total_spend), 0) AS averageCustomerLifetimeValue
+            FROM users u
+            LEFT JOIN (
+                SELECT 
+                    user_id, 
+                    COUNT(id) AS total_orders,
+                    SUM(
+                        CASE 
+                            WHEN LOWER(payment_status) = 'paid' AND LOWER(status) <> 'cancelled' 
+                            THEN total_amount 
+                            ELSE 0 
+                        END
+                    ) AS customer_total_spend
+                FROM orders
+                GROUP BY user_id
+            ) order_counts ON u.id = order_counts.user_id
+            WHERE u.role_id = 2
+        `);
+
+        const data = customerMetrics[0];
+
+        const totalCust = Number(data.totalCustomers) || 0;
+        const repeatCust = Number(data.repeatCustomers) || 0;
+        const repeatPurchaseRate = totalCust > 0
+            ? parseFloat(((repeatCust / totalCust) * 100).toFixed(2))
+            : 0;
+
+        return res.status(200).json({
+            success: true,
+            analytics: {
+                totalCustomers: totalCust,
+                repeatCustomers: repeatCust,
+                singlePurchaseCustomers: Number(data.singlePurchaseCustomers) || 0,
+                repeatPurchaseRatePercentage: repeatPurchaseRate,
+                averageCustomerLifetimeValue: parseFloat(Number(data.averageCustomerLifetimeValue).toFixed(2))
+            }
+        });
+    } catch (error) {
+        console.error("Customer Analytics Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 
 
 export {
@@ -1418,5 +1691,9 @@ export {
     getAllOrders,
     orderDashboardStatistics,
     getOrderDetailsByOrderId,
-    updatePaymentStatus
+    updatePaymentStatus,
+    getTopSellingProducts,
+    getSalesTrendOverTime,
+    getInventoryAlerts,
+    getCustomerAnalytics
 };

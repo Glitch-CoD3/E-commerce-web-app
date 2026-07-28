@@ -5,6 +5,7 @@ import { allowRoles } from "../middlewares/authorize.middleware.js";
 import { ROLES } from "../constants.js";
 
 import {
+    // Existing Controllers
     createOrder,
     buyNowDirectly,
     getOrdersByUserId,
@@ -14,18 +15,28 @@ import {
     getAllOrders,
     orderDashboardStatistics,
     getOrderDetailsByOrderId,
-    updatePaymentStatus
+    updatePaymentStatus,
+
+    // // New Return & Refund Controllers
+    // createReturnRequest,
+    // processRefund,
+
+    // New Analytics Controllers
+    getTopSellingProducts,
+    getSalesTrendOverTime,
+    getInventoryAlerts,
+    getCustomerAnalytics
 } from "../controllers/order.controller.js";
 
 const router = express.Router();
 
 // =====================================================
-// Authenticated User Routes
+// Authenticated User Routes (Global JWT Middleware)
 // =====================================================
 
 /**
  * @middleware verifyJWT
- * @description All routes in this section require an authenticated user.
+ * @description All routes defined below require an authenticated user.
  */
 router.use(verifyJWT);
 
@@ -57,13 +68,20 @@ router.get("/", getOrdersByUserId);
  */
 router.patch("/:orderId/cancel", order_cancel);
 
+/**
+ * @method POST /api/v1/orders/returns/request
+ * @description Request a return for a delivered order.
+ * @access Private (User)
+ */
+// router.post("/returns/request", createReturnRequest);
+
 // =====================================================
-// Admin Routes
+// Admin Routes (Order & Fulfillment Management)
 // =====================================================
 
 /**
  * @method GET /api/v1/orders/admin
- * @description Get all orders.
+ * @description Get all orders in the platform.
  * @access Private (Admin)
  */
 router.get(
@@ -73,19 +91,8 @@ router.get(
 );
 
 /**
- * @method GET /api/v1/orders/admin/dashboard
- * @description Get order dashboard statistics.
- * @access Private (Admin)
- */
-router.get(
-    "/admin/dashboard",
-    allowRoles(ROLES.ADMIN),
-    orderDashboardStatistics
-);
-
-/**
  * @method GET /api/v1/orders/admin/:orderId
- * @description Get detailed information about any order.
+ * @description Get detailed information about any specific order.
  * @access Private (Admin)
  */
 router.get(
@@ -106,18 +113,88 @@ router.patch(
 );
 
 /**
- * @method PATCH /api/v1/orders/:orderId/status
- * @description Update the order status (Processing, Shipped, Delivered, etc.).
+ * @method PATCH /api/v1/orders/admin/:orderId/status
+ * @description Update the fulfillment status of an order (Processing, Shipped, Delivered, etc.).
  * @access Private (Admin)
  */
 router.patch(
-    "/:orderId/status",
+    "/admin/:orderId/status",
     allowRoles(ROLES.ADMIN),
     updateOrderStatus
 );
 
+/**
+ * @method POST /api/v1/orders/admin/refund
+ * @description Process a return refund and restock product inventory.
+ * @access Private (Admin)
+ */
+// router.post(
+//     "/admin/refund",
+//     allowRoles(ROLES.ADMIN),
+//     processRefund
+// );
+
 // =====================================================
-// User Routes (Dynamic)
+// Admin Analytics Routes
+// =====================================================
+
+/**
+ * @method GET /api/v1/orders/admin/dashboard
+ * @description Get high-level KPI dashboard statistics.
+ * @access Private (Admin)
+ */
+router.get(
+    "/admin/dashboard",
+    allowRoles(ROLES.ADMIN),
+    orderDashboardStatistics
+);
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/sales-trend
+ * @description Get sales and revenue trends over time (monthly/daily).
+ * @access Private (Admin)
+ */
+router.get(
+    "/admin/analytics/sales-trend",
+    allowRoles(ROLES.ADMIN),
+    getSalesTrendOverTime
+);
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/top-selling-products
+ * @description Get top selling products by volume and revenue.
+ * @access Private (Admin)
+ */
+router.get(
+    "/admin/analytics/top-selling-products",
+    allowRoles(ROLES.ADMIN),
+    getTopSellingProducts
+);
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/inventory-alerts
+ * @description Get low stock and out-of-stock product warnings.
+ * @access Private (Admin)
+ */
+router.get(
+    "/admin/analytics/inventory-alerts",
+    allowRoles(ROLES.ADMIN),
+    getInventoryAlerts
+);
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/customer-metrics
+ * @description Get customer lifetime value and repeat purchase analytics.
+ * @access Private (Admin)
+ */
+router.get(
+    "/admin/analytics/customer-metrics",
+    allowRoles(ROLES.ADMIN),
+    getCustomerAnalytics
+);
+
+// =====================================================
+// Dynamic User Routes (MUST BE AT THE BOTTOM)
 // =====================================================
 
 /**
