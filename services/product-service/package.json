@@ -20,6 +20,7 @@
   "homepage": "https://github.com/Glitch-CoD3/E-commerce-web-app#readme",
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -28,6 +29,7 @@
     "jsonwebtoken": "^9.0.3",
     "method-override": "^3.0.0",
     "morgan": "^1.11.0",
+    "multer": "^2.2.0",
     "mysql2": "^3.22.5",
     "node-cron": "^4.5.0",
     "nodemailer": "^9.0.1",
