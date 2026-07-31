@@ -160,11 +160,6 @@ const createProduct = async (req, res) => {
 };
 
 
-/**
- * @method GET /api/v1/products
- * @description Retrieve all products
- * @access Public
- */
 const getAllProducts = async (req, res) => {
     try {
         const page = Number(req.query.page) || 1;
@@ -189,7 +184,7 @@ const getAllProducts = async (req, res) => {
             values.push(keyword, keyword, keyword);
         }
 
-        // Total products
+        // Total products count
         const [countResult] = await DB.promise().query(
             `
             SELECT COUNT(*) AS total
@@ -202,33 +197,69 @@ const getAllProducts = async (req, res) => {
         const totalProducts = countResult[0].total;
         const totalPages = Math.ceil(totalProducts / limit);
 
-        // Get products
-        const [products] = await DB.promise().query(
+        // Fetch products with aggregated sizes, colors, and images
+        const [rows] = await DB.promise().query(
             `
-    SELECT
-        p.*,
-        c.category_name,
-        c.url_slug AS category_slug,
-        b.brand_name AS brand_name,
-        b.*
-    FROM products p
-    LEFT JOIN categories c
-        ON p.category_id = c.id
-    LEFT JOIN brands b
-        ON p.brand_id = b.id
-    ${whereClause}
-    ORDER BY p.created_at DESC
-    LIMIT ?
-    OFFSET ?
-    `,
+            SELECT
+                p.id,
+                p.product_name AS name,
+                p.short_description AS shortDescription,
+                p.description,
+                p.price,
+                p.category_id,
+                p.url_slug,
+                c.category_name,
+                c.url_slug AS category_slug,
+                b.id AS brand_id,
+                b.brand_name,
+                b.logo AS brand_logo,
+                (
+                    SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"')), ']')
+                    FROM product_variants pv 
+                    WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+                ) AS sizes,
+                (
+                    SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"')), ']')
+                    FROM product_variants pv 
+                    WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+                ) AS colors,
+                (
+                    SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"')), '}')
+                    FROM product_variants pv
+                    JOIN variant_images iv ON iv.product_variant_id = pv.id
+                    WHERE pv.product_id = p.id 
+                      AND pv.deleted_at IS NULL 
+                      AND iv.deleted_at IS NULL
+                ) AS images
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN brands b ON p.brand_id = b.id
+            ${whereClause}
+            ORDER BY p.created_at DESC
+            LIMIT ?
+            OFFSET ?
+            `,
             [...values, limit, offset]
         );
 
-
+        // Format and parse JSON fields for each product
+        const formattedProducts = rows.map((product) => {
+            try {
+                product.sizes = product.sizes ? JSON.parse(product.sizes) : [];
+                product.colors = product.colors ? JSON.parse(product.colors) : [];
+                product.images = product.images ? JSON.parse(product.images) : {};
+            } catch (parseErr) {
+                console.error("JSON Parsing Error for product ID", product.id, parseErr);
+                product.sizes = [];
+                product.colors = [];
+                product.images = {};
+            }
+            return product;
+        });
 
         return res.status(200).json({
             success: true,
-            message: products.length
+            message: formattedProducts.length
                 ? "Products fetched successfully."
                 : "No products found.",
 
@@ -240,7 +271,7 @@ const getAllProducts = async (req, res) => {
                 search
             },
 
-            all_products: products,
+            all_products: formattedProducts,
 
             links: {
                 self: `/api/v1/products?page=${page}&limit=${limit}&search=${search}`,
@@ -258,7 +289,7 @@ const getAllProducts = async (req, res) => {
         });
 
     } catch (error) {
-        console.error(error);
+        console.error("Get All Products Error:", error);
 
         return res.status(500).json({
             success: false,
@@ -266,13 +297,119 @@ const getAllProducts = async (req, res) => {
         });
     }
 };
+/**
+ * @method GET /api/v1/products
+ * @description Retrieve all products
+ * @access Public
+ */
+// const getAllProducts = async (req, res) => {
+//     try {
+//         const page = Number(req.query.page) || 1;
+//         const limit = Number(req.query.limit) || 10;
+//         const search = req.query.search || "";
+
+//         const offset = (page - 1) * limit;
+
+//         let whereClause = `WHERE p.deleted_at IS NULL`;
+//         let values = [];
+
+//         // Search
+//         if (search) {
+//             whereClause += `
+//                 AND (
+//                     p.product_name LIKE ?
+//                     OR p.description LIKE ?
+//                     OR p.url_slug LIKE ?
+//                 )`;
+
+//             const keyword = `%${search}%`;
+//             values.push(keyword, keyword, keyword);
+//         }
+
+//         // Total products
+//         const [countResult] = await DB.promise().query(
+//             `
+//             SELECT COUNT(*) AS total
+//             FROM products p
+//             ${whereClause}
+//             `,
+//             values
+//         );
+
+//         const totalProducts = countResult[0].total;
+//         const totalPages = Math.ceil(totalProducts / limit);
+
+//         // Get products
+//         const [products] = await DB.promise().query(
+//             `
+//     SELECT
+//         p.*,
+//         c.category_name,
+//         c.url_slug AS category_slug,
+//         b.brand_name AS brand_name,
+//         b.*
+//     FROM products p
+//     LEFT JOIN categories c
+//         ON p.category_id = c.id
+//     LEFT JOIN brands b
+//         ON p.brand_id = b.id
+//     ${whereClause}
+//     ORDER BY p.created_at DESC
+//     LIMIT ?
+//     OFFSET ?
+//     `,
+//             [...values, limit, offset]
+//         );
+
+
+
+//         return res.status(200).json({
+//             success: true,
+//             message: products.length
+//                 ? "Products fetched successfully."
+//                 : "No products found.",
+
+//             meta: {
+//                 total_products: totalProducts,
+//                 total_pages: totalPages,
+//                 current_page: page,
+//                 per_page: limit,
+//                 search
+//             },
+
+//             all_products: products,
+
+//             links: {
+//                 self: `/api/v1/products?page=${page}&limit=${limit}&search=${search}`,
+//                 first: `/api/v1/products?page=1&limit=${limit}&search=${search}`,
+//                 last: `/api/v1/products?page=${totalPages}&limit=${limit}&search=${search}`,
+//                 previous:
+//                     page > 1
+//                         ? `/api/v1/products?page=${page - 1}&limit=${limit}&search=${search}`
+//                         : null,
+//                 next:
+//                     page < totalPages
+//                         ? `/api/v1/products?page=${page + 1}&limit=${limit}&search=${search}`
+//                         : null
+//             }
+//         });
+
+//     } catch (error) {
+//         console.error(error);
+
+//         return res.status(500).json({
+//             success: false,
+//             message: "Internal server error."
+//         });
+//     }
+// };
+
 
 /**
  * @method GET /api/v1/products/:id
- * @description Retrieve a product by its ID
+ * @description Retrieve a product by its ID with images, colors, brand everything
  * @access Public
  */
-
 const getProductById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -284,45 +421,77 @@ const getProductById = async (req, res) => {
             });
         }
 
-        const [product] = await DB.promise().query(
+        const [rows] = await DB.promise().query(
             `
-        SELECT
-        p.*,
-        c.category_name,
-        c.url_slug AS category_slug,
-        b.id AS brand_id,
-        b.brand_name,
-        b.logo AS brand_logo
-    FROM products p
-    LEFT JOIN categories c
-        ON p.category_id = c.id
-    LEFT JOIN brands b
-        ON p.brand_id = b.id
-    WHERE p.id = ?
-      AND p.deleted_at IS NULL
-    LIMIT 1
-    `,
+            SELECT 
+                p.id,
+                p.product_name AS name,
+                p.short_description AS shortDescription,
+                p.description,
+                p.price,
+                p.category_id,
+                p.url_slug,
+                c.category_name,
+                c.url_slug AS category_slug,
+                b.id AS brand_id,
+                b.brand_name,
+                b.logo AS brand_logo,
+                (
+                    SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"')), ']')
+                    FROM product_variants pv 
+                    WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+                ) AS sizes,
+                (
+                    SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"')), ']')
+                    FROM product_variants pv 
+                    WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+                ) AS colors,
+                (
+                    SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"')), '}')
+                    FROM product_variants pv
+                    JOIN variant_images iv ON iv.product_variant_id = pv.id
+                    WHERE pv.product_id = p.id 
+                      AND pv.deleted_at IS NULL 
+                      AND iv.deleted_at IS NULL
+                ) AS images
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN brands b ON p.brand_id = b.id
+            WHERE p.id = ? AND p.deleted_at IS NULL
+            LIMIT 1
+            `,
             [id]
         );
 
-        if (!product.length) {
+        if (!rows.length || !rows[0].id) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found."
             });
         }
 
+        const product = rows[0];
+
+        // Parse MariaDB string representations into Javascript Objects / Arrays
+        try {
+            product.sizes = product.sizes ? JSON.parse(product.sizes) : [];
+            product.colors = product.colors ? JSON.parse(product.colors) : [];
+            product.images = product.images ? JSON.parse(product.images) : {};
+        } catch (parseErr) {
+            console.error("JSON Parsing Error:", parseErr);
+        }
+
         return res.status(200).json({
             success: true,
             message: "Product retrieved successfully.",
-            product: product[0],
+            product: product,
             links: {
-                self: `/ api / v1 / products / ${id}`,
-                bySlug: `/ api / v1 / products / slug / ${product[0].url_slug}`,
-                category: `/ api / v1 / categories / ${product[0].category_id}`,
-                update: `/ api / v1 / products / ${id}`,
-                updateStatus: `/ api / v1 / products / ${id} / status`,
-                delete: `/ api / v1 / products / ${id}`,
+                self: `/api/v1/products/${id}`,
+                bySlug: `/api/v1/products/slug/${product.url_slug}`,
+                category: `/api/v1/categories/${product.category_id}`,
+                update: `/api/v1/products/${id}`,
+                updateStatus: `/api/v1/products/${id}/status`,
+                delete: `/api/v1/products/${id}`,
                 allProducts: "/api/v1/products"
             }
         });
@@ -336,6 +505,7 @@ const getProductById = async (req, res) => {
         });
     }
 };
+
 
 /**
  * @method GET /api/v1/products/slug/:slug
