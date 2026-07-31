@@ -22,3 +22,8 @@ export const getCategories = async () => {
 //Gate category By category id
 // export const getCategoryById
 
+export const getAllProducts = async () => {
+  const response = await AxiosInstance.get("/products");
+  return response.data;
+};
+

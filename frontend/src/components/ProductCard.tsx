@@ -9,8 +9,8 @@ import { useState } from "react";
 const ProductCard = ({ product }: { product: ProductType }) => {
   const [productTypes, setProductTypes] = useState(
     {
-      size: product.sizes[0],
-      color: product.colors[0]
+      size: product.sizes[0] ?? "",
+      color: product.colors[0] ?? "",
     }
   )
 
@@ -77,7 +77,7 @@ const ProductCard = ({ product }: { product: ProductType }) => {
 
         {/* PRICE & ADD TO CARDS BUTTON */}
         <div className="flex items-center justify-between">
-          <p className="font-medium"> TK.{product.price.toFixed(2)} </p>
+          <p className="font-medium"> TK.{Number(product.price).toFixed(2)} </p>
           <button className="flex gap-2 items-center ring-1 ring-gray-200 shadow-lg rounded-md px-2 py-1 text-sm cursor-pointer hover:text-white hover:bg-black transition-all duration-300">
             <LucideShoppingCart className="w-5 h-5" />
             Add To Cart

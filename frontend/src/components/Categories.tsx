@@ -49,7 +49,7 @@ const Categories = () => {
                         name: "All",
                         slug: "all",
                     },
-                    ...response.data,
+                    ...response.All_categories,
                 ]);
             } catch (error) {
                 console.error("Failed to fetch categories:", error);
