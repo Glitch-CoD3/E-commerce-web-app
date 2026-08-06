@@ -201,45 +201,53 @@ const getAllProducts = async (req, res) => {
         const [rows] = await DB.promise().query(
             `
             SELECT
-                p.id,
-                p.product_name AS name,
-                p.short_description AS shortDescription,
-                p.description,
-                p.price,
-                p.stock_quantity,
-                p.category_id,
-                p.url_slug,
-                p.status,
-                c.category_name,
-                c.url_slug AS category_slug,
-                b.id AS brand_id,
-                b.brand_name,
-                b.logo AS brand_logo,
-                (
-                    SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"')), ']')
-                    FROM product_variants pv 
-                    WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
-                ) AS sizes,
-                (
-                    SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"')), ']')
-                    FROM product_variants pv 
-                    WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
-                ) AS colors,
-                (
-                    SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"')), '}')
-                    FROM product_variants pv
-                    JOIN variant_images iv ON iv.product_variant_id = pv.id
-                    WHERE pv.product_id = p.id 
-                      AND pv.deleted_at IS NULL 
-                      AND iv.deleted_at IS NULL
-                ) AS images
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            LEFT JOIN brands b ON p.brand_id = b.id
-            ${whereClause}
-            ORDER BY p.created_at DESC
-            LIMIT ?
-            OFFSET ?
+    p.id,
+    p.product_name AS name,
+    p.short_description AS shortDescription,
+    p.description,
+    p.price,
+    p.stock_quantity,
+    p.category_id,
+    p.url_slug,
+    p.status,
+    c.category_name,
+    c.url_slug AS category_slug,
+    b.id AS brand_id,
+    b.brand_name,
+    b.logo AS brand_logo,
+    
+    -- Added: Total Variants Count
+    (
+        SELECT COUNT(*)
+        FROM product_variants pv 
+        WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+    ) AS total_variants,
+
+    (
+        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"')), ']')
+        FROM product_variants pv 
+        WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+    ) AS sizes,
+    (
+        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"')), ']')
+        FROM product_variants pv 
+        WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+    ) AS colors,
+    (
+        SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"')), '}')
+        FROM product_variants pv
+        JOIN variant_images iv ON iv.product_variant_id = pv.id
+        WHERE pv.product_id = p.id 
+          AND pv.deleted_at IS NULL 
+          AND iv.deleted_at IS NULL
+    ) AS images
+FROM products p
+LEFT JOIN categories c ON p.category_id = c.id
+LEFT JOIN brands b ON p.brand_id = b.id
+${whereClause}
+ORDER BY p.created_at DESC
+LIMIT ?
+OFFSET ?
             `,
             [...values, limit, offset]
         );

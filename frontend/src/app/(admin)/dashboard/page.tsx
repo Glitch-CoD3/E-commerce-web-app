@@ -6,13 +6,16 @@ import axiosInstance from '@/src/api/axiosInstance';
 // Components
 import Header from '@/src/components/admin_dashboard/Header';
 import StatsOverview from '@/src/components/admin_dashboard/StatsOverview';
-import BrandTab from '@/src/components/admin_dashboard/CategoryTab';
+import BrandTab from '@/src/components/admin_dashboard/BrandTab';
 import CategoryTab from '@/src/components/admin_dashboard/CategoryTab';
 import OrderTab from '@/src/components/admin_dashboard/OrderTab';
 import ProductTab from '@/src/components/admin_dashboard/ProductTab';
 import PaidCustomerTab from '@/src/components/admin_dashboard/PaidCustomerTab';
 import TopSellingTab from '@/src/components/admin_dashboard/TopSellingTab';
 import OrderModal from '@/src/components/admin_dashboard/OrderModal';
+
+import { getAllBrands, getAllProducts, getCategories } from '@/src/services/product.service';
+
 type OrderStatus = 'paid' | 'pending' | 'unpaid' | 'cancelled';
 
 export default function SinglePageAdmin() {
@@ -27,24 +30,28 @@ export default function SinglePageAdmin() {
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
 
+  const extractData = (res: any) => (res && res.data !== undefined ? res.data : res);
+
   // --- API FETCHING ---
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [p, b, c, o] = await Promise.all([
-          axiosInstance.get('/products'),
-          axiosInstance.get('/brands'),
-          axiosInstance.get('/categories'),
-          axiosInstance.get('/orders'),
-        ]);
-        setProducts(p as any);
-        setBrands(b as any);
-        setCategories(c as any);
-        setOrders(o as any);
+        // Renamed local variable to avoid shadowing state 'brands'
+        const fetchedBrands = await getAllBrands();
+        setBrands(fetchedBrands.data);
+
+        const fetchedProducts = await getAllProducts();
+        setProducts(fetchedProducts.data);
+
+        const fetchedCategories = await getCategories();
+        setCategories(fetchedCategories.All_categories);
+
       } catch (err) {
         console.error('Fetch error:', err);
+        setBrands([]); // Fallback array on error
       }
     };
+
     fetchAll();
   }, []);
 
@@ -52,10 +59,12 @@ export default function SinglePageAdmin() {
   const handleSaveProduct = async (productData: any, editingId: string | null) => {
     try {
       if (editingId) {
-        const updated = await axiosInstance.put(`/products/${editingId}`, productData);
+        const res = await axiosInstance.put(`/products/${editingId}`, productData);
+        const updated = extractData(res);
         setProducts(products.map(p => (p.id === editingId ? updated : p)));
       } else {
-        const created = await axiosInstance.post('/products', productData);
+        const res = await axiosInstance.post('/products', productData);
+        const created = extractData(res);
         setProducts([...products, created]);
       }
     } catch (err) {
@@ -76,10 +85,12 @@ export default function SinglePageAdmin() {
   const handleSaveBrand = async (name: string, editingId: string | null) => {
     try {
       if (editingId) {
-        const updated = await axiosInstance.put(`/brands/${editingId}`, { name });
+        const res = await axiosInstance.put(`/brands/${editingId}`, { name });
+        const updated = extractData(res);
         setBrands(brands.map(b => (b.id === editingId ? updated : b)));
       } else {
-        const created = await axiosInstance.post('/brands', { name });
+        const res = await axiosInstance.post('/brands', { name });
+        const created = extractData(res);
         setBrands([...brands, created]);
       }
     } catch (err) {
@@ -100,10 +111,12 @@ export default function SinglePageAdmin() {
   const handleSaveCategory = async (data: { name: string; parentId: string }, editingId: string | null) => {
     try {
       if (editingId) {
-        const updated = await axiosInstance.put(`/categories/${editingId}`, data);
+        const res = await axiosInstance.put(`/categories/${editingId}`, data);
+        const updated = extractData(res);
         setCategories(categories.map(c => (c.id === editingId ? updated : c)));
       } else {
-        const created = await axiosInstance.post('/categories', data);
+        const res = await axiosInstance.post('/categories', data);
+        const created = extractData(res);
         setCategories([...categories, created]);
       }
     } catch (err) {
@@ -139,8 +152,8 @@ export default function SinglePageAdmin() {
     return <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${colors[status]}`}>{status}</span>;
   };
 
-  // Computed data for specialized tabs
-  const paidOrders = orders.filter(o => o.status === 'paid');
+  // Safe evaluation ensuring array methods like .filter do not throw uncaught errors
+  const paidOrders = Array.isArray(orders) ? orders.filter(o => o.status === 'paid') : [];
 
   return (
     <div className={`min-h-screen ${bgMain} p-6 space-y-8 font-sans transition-colors duration-300`}>
@@ -164,9 +177,8 @@ export default function SinglePageAdmin() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`pb-3.5 text-sm font-bold transition-all border-b-2 ${
-                activeTab === tab.id ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
+              className={`pb-3.5 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
             >
               {tab.label}
             </button>
@@ -176,17 +188,17 @@ export default function SinglePageAdmin() {
         {/* Tab Content Panes */}
         <div className="p-6">
           {activeTab === 'products' && (
-            <ProductTab
-              products={products}
-              categories={categories}
-              brands={brands}
-              onSave={handleSaveProduct}
-              onDelete={handleDeleteProduct}
-              formSubBg={formSubBg}
-              tableHeaderBg={tableHeaderBg}
-              inputBg={inputBg}
-              borderRow={borderRow}
-            />
+            <ProductTab {...({
+              products,
+              categories,
+              brands,
+              onSave: handleSaveProduct,
+              onDelete: handleDeleteProduct,
+              formSubBg,
+              tableHeaderBg,
+              inputBg,
+              borderRow,
+            } as any)} />
           )}
 
           {activeTab === 'categories' && (
