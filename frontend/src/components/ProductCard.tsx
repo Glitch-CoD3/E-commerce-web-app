@@ -28,8 +28,14 @@ const ProductCard = ({ product }: { product: ProductType }) => {
       <Link href={`/product/${product.id}`}>
 
         <div className="relative aspect-2/3">
-          <Image src={product.images[productTypes.color]} alt={product.name} fill sizes="(max-width: 640px) 100vw, 
-         (max-width: 1024px) 50vw, 25vw"  preload className="object-cover hover:scale-105 transition-all duration-300" />
+          <Image
+            src={product.images?.[productTypes.color] || "/placeholder.png"}
+            alt={product.name || "Product image"}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+            preload
+            className="object-cover hover:scale-105 transition-all duration-300"
+          />
         </div>
 
       </Link>

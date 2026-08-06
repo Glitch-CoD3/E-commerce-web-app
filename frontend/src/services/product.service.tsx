@@ -11,8 +11,12 @@ export type CategoryType = {
   deleted_at?: string | null;
 };
 
-
-
+export type CreateCategoryInput = {
+  category_name: string;
+  url_slug: string;
+  parent_category_id?: number | null;
+  status?: number | string;
+};
 
 // Create category API call
 export const createCategory = async (data: Partial<CategoryType>) => {
@@ -29,6 +33,22 @@ export const getCategories = async () => {
 // Get category by category ID API call
 export const getCategoryById = async (id: number | string) => {
   const response = await AxiosInstance.get(`/categories/${id}`);
+  return response.data;
+};
+
+
+// 4. Update Category
+export const updateCategory = async (
+  id: number | string,
+  data: Partial<CreateCategoryInput>
+): Promise<CategoryType> => {
+  const response = await AxiosInstance.put(`/categories/${id}`, data);
+  return response.data;
+};
+
+// 5. Delete Category
+export const deleteCategory = async (id: number | string): Promise<void> => {
+  const response = await AxiosInstance.delete(`/categories/${id}`);
   return response.data;
 };
 
@@ -89,9 +109,50 @@ export const getTopSellingProducts = async () => {
 };
 
 
+
+//-------------------------------//
+//PRODUCTS Brands API CALLS
+//-------------------------------//
+
+export type CreateBrandInput = {
+  brand_name: string;
+  logo?: string | null;
+  created_at?: Date | string;
+  id?: number | bigint; // Optional since DB usually auto-increments this
+};
+
+export type Brand = {
+  id: string | number;
+  brand_name: string;
+  logo: string | null;
+  created_at: Date | string;
+};
+
+
 // Get all Brands API call
 export const getAllBrands = async () => {
   const response = await AxiosInstance.get("/brands");
+  return response.data;
+};
+
+// 2. Create Brand
+export const createBrand = async (data: CreateBrandInput): Promise<Brand> => {
+  const response = await AxiosInstance.post("/brands", data);
+  return response.data;
+};
+
+// 3. Update Brand
+export const updateBrand = async (
+  id: string | number,
+  data: Partial<CreateBrandInput>
+): Promise<Brand> => {
+  const response = await AxiosInstance.put(`/brands/${id}`, data);
+  return response.data;
+};
+
+// 4. Delete Brand
+export const deleteBrand = async (id: string | number): Promise<void> => {
+  const response = await AxiosInstance.delete(`/brands/${id}`);
   return response.data;
 };
 

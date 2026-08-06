@@ -146,25 +146,25 @@ export default function ProductTab({
   }, []);
 
   const fetchInitialData = async () => {
-    setIsFetchingData(true);
-    try {
+  setIsFetchingData(true);
+  try {
+    // 🚀 Fetch all endpoints in parallel rather than sequential waterfalls
+    const [productsRes, categoriesRes, brandsRes] = await Promise.all([
+      getAllProducts(),
+      getCategories(),
+      getAllBrands()
+    ]);
 
-      const products = await getAllProducts();
-      const categories = await getCategories();
-      const brands = await getAllBrands();
+    setProducts(productsRes?.all_products || []);
+    setCategories(categoriesRes?.All_categories || []);
+    setBrands(brandsRes?.data || []);
 
-      setProducts(products.all_products || []);
-      setCategories(categories.All_categories || []);
-      setBrands(brands.data || []);
-
-      console.log("products", products);
-
-    } catch (error) {
-      console.error('Failed to fetch initial products tab data:', error);
-    } finally {
-      setIsFetchingData(false);
-    }
-  };
+  } catch (error) {
+    console.error('Failed to fetch initial products tab data:', error);
+  } finally {
+    setIsFetchingData(false);
+  }
+};
 
   // Helper function to build URL slug
   const generateSlug = (text: string) => {
@@ -520,88 +520,93 @@ export default function ProductTab({
 
       {/* Products Display Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-slate-300">
-          <thead className={`text-xs uppercase font-bold border-b ${tableHeaderBg}`}>
-            <tr>
-              <th className="p-3">Product Name</th>
-              <th className="p-3">Category</th>
-              <th className="p-3">Brand</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Variants</th>
-              <th className="p-3">Total Stock</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60">
-            {isFetchingData ? (
-              <tr>
-                <td colSpan={7} className="p-6 text-center text-xs text-slate-400">
-                  Loading product dataset...
-                </td>
-              </tr>
-            ) : products.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-6 text-center text-xs text-slate-400">
-                  No products found.
-                </td>
-              </tr>
-            ) : (
-              products.map(p => {
-                const categoryObj = categories.find(c => c.id === p.category_id);
-                const brandObj = brands.find(b => b.id === p.brand_id);
+  <table className="w-full text-left text-sm text-slate-300">
+    <thead className={`text-xs uppercase font-bold border-b ${tableHeaderBg}`}>
+      <tr>
+        <th className="p-3">Product Name</th>
+        <th className="p-3">Category</th>
+        <th className="p-3">Brand</th>
+        <th className="p-3">Status</th>
+        <th className="p-3">Variants</th>
+        <th className="p-3">Total Stock</th>
+        <th className="p-3 text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-slate-800/60">
+      {isFetchingData ? (
+        <tr>
+          <td colSpan={7} className="p-6 text-center text-xs text-slate-400">
+            Loading product dataset...
+          </td>
+        </tr>
+      ) : products.length === 0 ? (
+        <tr>
+          <td colSpan={7} className="p-6 text-center text-xs text-slate-400">
+            No products found.
+          </td>
+        </tr>
+      ) : (
+        products.map((p, index) => {
+          const categoryObj = (categories || []).find(c => c && String(c.id) === String(p.category_id));
+          const brandObj = (brands || []).find(b => b && String(b.id) === String(p.brand_id));
 
-                return (
-                  <tr key={p.id} className={`hover:bg-indigo-500/5 ${borderRow}`}>
-                    <td className="p-3 font-bold text-white">{p.name}</td>
-                    <td className="p-3 text-xs text-slate-400">{categoryObj?.category_name || p.category?.category_name || '—'}</td>
-                    <td className="p-3 text-xs text-slate-400">{p.brand_name || '—'}</td>
-                    <td className="p-3 text-xs">
-                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${p.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="p-3 text-xs font-mono text-indigo-400">{p.total_variants || 0} Option(s)</td>
-                    <td className="p-3 font-bold">{p.stock_quantity ?? 0}</td>
-                    <td className="p-3 text-right space-x-2">
-                      <button
-                        onClick={() => {
-                          setEditingId(p.id);
-                          setForm({
-                            product_name: p.product_name,
-                            category_id: p.category_id,
-                            brand_id: p.brand_id || undefined,
-                            short_description: p.short_description || '',
-                            description: p.description || '',
-                            status: p.status,
-                            variants: (p.variants || []).map(v => ({
-                              id: String(v.id),
-                              colors: v.colors || '',
-                              sizes: v.sizes || '',
-                              price: v.price,
-                              stock_quantity: v.stock_quantity,
-                              images: (v.images || []).map(img => ({
-                                id: String(img.id),
-                                previewUrl: img.image_url,
-                              })),
-                            })),
-                          });
-                        }}
-                        className="text-xs text-indigo-400 hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button onClick={() => handleDelete(p.id)} className="text-xs text-rose-500 hover:underline">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+          // Fix 1: Fallback key prevents React's "unique key" warning if p.id is missing or duplicate
+          const uniqueKey = p?.id ? `product-${p.id}` : `prod-idx-${index}`;
+
+          return (
+            <tr key={uniqueKey} className={`hover:bg-indigo-500/5 ${borderRow}`}>
+              <td className="p-3 font-bold text-white">{p.product_name || p.name || '—'}</td>
+              <td className="p-3 text-xs text-slate-400">{categoryObj?.category_name || p.category?.category_name || '—'}</td>
+              {/* Fix 2: Applied brandObj lookup here */}
+              <td className="p-3 text-xs text-slate-400">{brandObj?.brand_name || p.brand_name || '—'}</td>
+              <td className="p-3 text-xs">
+                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${p.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
+                  }`}>
+                  {p.status || 'inactive'}
+                </span>
+              </td>
+              <td className="p-3 text-xs font-mono text-indigo-400">{p.total_variants || (p.variants || []).length || 0} Option(s)</td>
+              <td className="p-3 font-bold">{p.stock_quantity ?? 0}</td>
+              <td className="p-3 text-right space-x-2">
+                <button
+                  onClick={() => {
+                    setEditingId(p.id);
+                    setForm({
+                      product_name: p.product_name || p.name || '',
+                      category_id: p.category_id,
+                      brand_id: p.brand_id || undefined,
+                      short_description: p.short_description || '',
+                      description: p.description || '',
+                      status: p.status || 'active',
+                      // Fix 3: Optional chaining and fallbacks for variant mapping
+                      variants: (p.variants || []).map((v, vIdx) => ({
+                        id: v?.id ? String(v.id) : `variant-${vIdx}`,
+                        colors: v?.colors || '',
+                        sizes: v?.sizes || '',
+                        price: v?.price ?? 0,
+                        stock_quantity: v?.stock_quantity ?? 0,
+                        images: (v?.images || []).map((img, imgIdx) => ({
+                          id: img?.id ? String(img.id) : `img-${imgIdx}`,
+                          previewUrl: img?.image_url || img?.previewUrl || '',
+                        })),
+                      })),
+                    });
+                  }}
+                  className="text-xs text-indigo-400 hover:underline"
+                >
+                  Edit
+                </button>
+                <button onClick={() => handleDelete(p.id)} className="text-xs text-rose-500 hover:underline">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          );
+        })
+      )}
+    </tbody>
+  </table>
+</div>
     </div>
   );
 }

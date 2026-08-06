@@ -1,73 +1,118 @@
 'use client';
 
-import { useState } from 'react';
-
-type Brand = { 
-  id: string; 
-  name: string; 
-};
+import { useState, useEffect } from 'react';
+import {
+  CreateBrandInput,
+  Brand,
+  getAllBrands,
+  createBrand,
+  updateBrand,
+  deleteBrand
+} from '../../services/product.service';
 
 type BrandTabProps = {
   brands?: Brand[];
-  onSave: (name: string, editingId: string | null) => void;
-  onDelete: (id: string) => void;
-  formSubBg: string;
-  tableHeaderBg: string;
-  inputBg: string;
-  borderRow: string;
+  onSave?: (data: CreateBrandInput, editingId: string | null) => void;
+  onDelete?: (id: string | number) => void;
+  formSubBg?: string;
+  tableHeaderBg?: string;
+  inputBg?: string;
+  borderRow?: string;
 };
 
 export default function BrandTab({
-  brands = [], // Defensive parameter fallback for safe rendering
+  brands: initialBrands = [],
   onSave,
   onDelete,
-  formSubBg,
-  tableHeaderBg,
-  inputBg,
-  borderRow,
+  formSubBg = 'transparent',
+  tableHeaderBg = 'transparent',
+  inputBg = 'transparent',
+  borderRow = 'transparent',
 }: BrandTabProps) {
-  const [name, setName] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [brandName, setBrandName] = useState('');
+  const [logo, setLogo] = useState('');
+  const [brands, setBrands] = useState<Brand[]>(initialBrands);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Guarantee array type before performing operations
-  const safeBrands = Array.isArray(brands) ? brands : [];
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    /* 
-    // API SAVE LOGIC (COMMENTED FOR DEMO)
+  // Load brands on component mount
+  const fetchBrands = async () => {
     try {
-      if (editingId) {
-        await axiosInstance.put(`/brands/${editingId}`, { name });
-      } else {
-        await axiosInstance.post('/brands', { name });
-      }
+      setLoading(true);
+      const fetchedBrands = await getAllBrands();
+      setBrands(fetchedBrands.data);
+      console.log('Fetched brands:', fetchedBrands.data);
     } catch (err) {
-      console.error('Failed to save brand:', err);
+      console.error('Failed to fetch brands:', err);
+    } finally {
+      setLoading(false);
     }
-    */
+  };
 
-    // Pass data up to parent handler
-    onSave(name.trim(), editingId);
+  useEffect(() => {
+    fetchBrands();
+  }, []);
 
-    // Reset Form State
-    setName('');
+  // Handle Edit Click
+  const handleEditClick = (brand: Brand) => {
+    setEditingId(brand.id);
+    setBrandName(brand.brand_name);
+    setLogo(brand.logo || '');
+  };
+
+  // Reset form
+  const resetForm = () => {
+    setBrandName('');
+    setLogo('');
     setEditingId(null);
   };
 
-  const handleDelete = (id: string) => {
-    /* 
-    // API DELETE LOGIC (COMMENTED FOR DEMO)
+  // Handle Form Submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!brandName.trim()) return;
+
+    const payload: CreateBrandInput = {
+      brand_name: brandName.trim(),
+      logo: logo.trim() || null,
+    };
+
     try {
-      await axiosInstance.delete(`/brands/${id}`);
+      if (editingId) {
+        await updateBrand(editingId, payload);
+      } else {
+        await createBrand(payload);
+      }
+
+      // Refresh list after saving
+      await fetchBrands();
+
+      // Trigger optional parent callback
+      if (onSave) {
+        onSave(payload, editingId ? String(editingId) : null);
+      }
+
+      resetForm();
+    } catch (err) {
+      console.error('Failed to save brand:', err);
+    }
+  };
+
+  // Handle Delete
+  const handleDelete = async (id: string | number) => {
+    try {
+      await deleteBrand(id);
+
+      // Refresh list after deletion
+      await fetchBrands();
+
+      // Trigger optional parent callback
+      if (onDelete) {
+        onDelete(String(id));
+      }
     } catch (err) {
       console.error('Failed to delete brand:', err);
     }
-    */
-
-    onDelete(id);
   };
 
   return (
@@ -84,8 +129,8 @@ export default function BrandTab({
           <input
             type="text"
             required
-            value={name}
-            onChange={e => setName(e.target.value)}
+            value={brandName}
+            onChange={e => setBrandName(e.target.value)}
             className={`w-full text-xs p-2.5 rounded-lg border outline-none ${inputBg}`}
             placeholder="e.g. Sony, Apple, Nike"
           />
@@ -104,7 +149,7 @@ export default function BrandTab({
               type="button"
               onClick={() => {
                 setEditingId(null);
-                setName('');
+                setBrandName('');
               }}
               className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-lg font-bold transition"
             >
@@ -124,21 +169,22 @@ export default function BrandTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/30">
-            {safeBrands.length === 0 ? (
+            {brands.length === 0 ? (
               <tr>
                 <td colSpan={2} className="p-4 text-center text-xs text-slate-400">
                   No brands found.
                 </td>
               </tr>
             ) : (
-              safeBrands.map(brand => (
+              brands.map(brand => (
                 <tr key={brand.id} className={`hover:bg-indigo-500/5 ${borderRow}`}>
-                  <td className="p-3 font-bold">{brand.name}</td>
+                  <td className="p-3 font-bold">{brand.brand_name}</td>
                   <td className="p-3 text-right space-x-2">
                     <button
                       onClick={() => {
                         setEditingId(brand.id);
-                        setName(brand.name);
+                        setBrandName(brand.brand_name);
+                        setLogo(brand.logo || '');
                       }}
                       className="text-xs text-indigo-400 hover:underline"
                     >
