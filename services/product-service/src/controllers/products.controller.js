@@ -206,6 +206,7 @@ const getAllProducts = async (req, res) => {
                 p.short_description AS shortDescription,
                 p.description,
                 p.price,
+                p.stock_quantity,
                 p.category_id,
                 p.url_slug,
                 p.status,
