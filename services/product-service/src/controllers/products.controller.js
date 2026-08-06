@@ -208,6 +208,7 @@ const getAllProducts = async (req, res) => {
                 p.price,
                 p.category_id,
                 p.url_slug,
+                p.status,
                 c.category_name,
                 c.url_slug AS category_slug,
                 b.id AS brand_id,
