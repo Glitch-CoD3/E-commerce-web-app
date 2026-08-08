@@ -14,8 +14,8 @@ import userProxy from './routes/user.proxy.js';
 import productProxy from './routes/product-service-proxy/product.proxy.js';
 import categoryProxy from './routes/product-service-proxy/categories.proxy.js';
 import productVariantProxy from './routes/product-service-proxy/product_variant.proxy.js';
-import brands from './routes/product-service-proxy/brands.proxy.js'
-
+import brands from './routes/product-service-proxy/brands.proxy.js';
+import productvariantImage from './routes/product-service-proxy/product.imageupload.proxy.js';
 
 import orderProxy from './routes/order_service-proxy/order.proxy.js';
 import cartProxy from './routes/cart.proxy.js';
@@ -72,6 +72,8 @@ app.use("/api/v1/brands", verifyJWT, brands);
 app.use("/api/v1/categories", verifyJWT, categoryProxy);
 
 app.use("/api/v1/product-variants", verifyJWT, productVariantProxy);
+
+app.use("/api/v1/product-variants-image", verifyJWT, productvariantImage);
 
 app.use('/api/v1/cart', verifyJWT, cartProxy);
 
