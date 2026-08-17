@@ -27,7 +27,6 @@ const router = express.Router();
  * @middleware verifyJWT
  * @description All routes below require an authenticated user.
  */
-router.use(verifyJWT)
 
 /**
  * @method GET /api/v1/products
@@ -50,7 +49,7 @@ router.get("/category/:categoryId", getProductsByCategoryId);
  */
 router.get("/slug/:slug", getProductBySlug);
 
-
+router.use(verifyJWT)
 
 /**
  * @method GET /api/v1/products/deleted
