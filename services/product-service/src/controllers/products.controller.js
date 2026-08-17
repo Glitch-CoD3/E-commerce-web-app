@@ -200,7 +200,7 @@ const getAllProducts = async (req, res) => {
         // Fetch products with aggregated sizes, colors, and images
         const [rows] = await DB.promise().query(
             `
-            SELECT
+           SELECT
     p.id,
     p.product_name AS name,
     p.short_description AS shortDescription,
@@ -240,7 +240,17 @@ const getAllProducts = async (req, res) => {
         WHERE pv.product_id = p.id 
           AND pv.deleted_at IS NULL 
           AND iv.deleted_at IS NULL
-    ) AS images
+    ) AS images,
+    (
+        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity), ']')
+        FROM product_variants pv 
+        WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+    ) AS variant_stocks,
+    (
+        SELECT CONCAT('[', GROUP_CONCAT(pv.price), ']')
+        FROM product_variants pv 
+        WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+    ) AS variant_prices
 FROM products p
 LEFT JOIN categories c ON p.category_id = c.id
 LEFT JOIN brands b ON p.brand_id = b.id
