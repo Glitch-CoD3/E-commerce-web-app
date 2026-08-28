@@ -1,6 +1,6 @@
 import DB from '../config/db.config.js'
 import { getAllCart } from '../utils/axiosClient.js'
-import { getProductsByIds } from '../utils/product.api.js'
+import { getProductsByIds, getProductByVariantId } from '../utils/product.api.js'
 import { getShippingAddressByUserId } from '../utils/getShippingAddress.api.js'
 const connection = await DB.promise().getConnection();
 /**
@@ -10,22 +10,24 @@ const connection = await DB.promise().getConnection();
  */
 
 const createOrder = async (req, res) => {
+    let inTransaction = false;
+
     try {
 
         if (!req.body) {
             return res.status(401).json({
                 success: false,
-                message: " Mo data field passes from req.body "
-            })
+                message: "No data field passed from req.body"
+            });
         }
 
-        const { full_address, state, city, zip } = req.body
+        const { full_address, state, city, zip } = req.body;
 
         if (!full_address || !state || !city) {
             return res.status(401).json({
                 success: false,
-                message: " Full address, state and city are required "
-            })
+                message: "Full address, state and city are required"
+            });
         }
 
         const order_shipping_Address = {
@@ -33,8 +35,7 @@ const createOrder = async (req, res) => {
             state,
             city,
             zip
-        }
-
+        };
 
         const token = req.cookies.refreshToken || req.headers.authorization?.split(' ')[1];
 
@@ -43,82 +44,110 @@ const createOrder = async (req, res) => {
         //---------------------------------------------------
 
         const carts = await getAllCart(token);
-        console.log(carts)
 
-        if (carts.data.length === 0) {
+        if (!carts?.data || carts.data.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: "Cart is empty"
             });
         }
 
-        //---------------------------------------------------
-        // 2. Get latest products
-        //---------------------------------------------------
+       //---------------------------------------------------
+// 2. Get latest products (batch fetch)
+//---------------------------------------------------
 
-        const productIds = carts.data.map(item => item.product_id);
+const productVariantIds = carts.data.map(item => item.product_variant_id);
 
-        //---------------------------------------------------
-        // 3. Validate products
-        //---------------------------------------------------
+const productsResponse = await getProductsByIds(productVariantIds, token);
 
-        const products = [];
+// Normalize whatever shape comes back into a flat array
+const fetchedProducts = Array.isArray(productsResponse)
+    ? productsResponse
+    : Array.isArray(productsResponse?.data)
+        ? productsResponse.data
+        : productsResponse
+            ? [productsResponse]
+            : [];
 
-        for (const id of productIds) {
+if (fetchedProducts.length === 0) {
+    return res.status(404).json({
+        success: false,
+        message: "Products not found"
+    });
+}
 
-            const product = await getProductsByIds(id, token);
+//---------------------------------------------------
+// 3. Validate products
+//---------------------------------------------------
 
-            if (!product) {
-                return res.status(404).json({
-                    success: false,
-                    message: `Product ${id} not found`
-                });
-            }
+const productMap = new Map(); // key: id (variant id) -> product
 
-            const cartItem = carts.data.find(
-                item => item.product_id === id
-            );
+for (const product of fetchedProducts) {
+    productMap.set(product.id, product);
+}
 
-            if (product.stock_quantity < cartItem.quantity) {
-                return res.status(400).json({
-                    success: false,
-                    message: `${product.product_name} has only ${product.stock_quantity} items in stock`
-                });
-            }
+for (const variantId of productVariantIds) {
 
-            products.push(product);
-        }
+    const product = productMap.get(variantId);
 
+    if (!product) {
+        return res.status(404).json({
+            success: false,
+            message: `Product variant ${variantId} not found`
+        });
+    }
 
-        //---------------------------------------------------
-        // 4. Create Order Items
-        //---------------------------------------------------
+    const cartItem = carts.data.find(
+        item => item.product_variant_id === variantId
+    );
 
-        const orderItems = [];
+    if (!cartItem) {
+        return res.status(400).json({
+            success: false,
+            message: `Cart item for variant ${variantId} not found`
+        });
+    }
 
-        for (const cartItem of carts.data) {
+    const stockQuantity = Number(product.quantity);
 
-            const product = products.find(
-                p => p.id === cartItem.product_id
-            );
+    if (stockQuantity < cartItem.quantity) {
+        return res.status(400).json({
+            success: false,
+            message: `${product.product_name} has only ${stockQuantity} items in stock`
+        });
+    }
+}
 
-            if (!product) {
-                return res.status(404).json({
-                    success: false,
-                    message: `Product ${cartItem.product_id} not found`
-                });
-            }
+//---------------------------------------------------
+// 4. Create Order Items
+//---------------------------------------------------
 
-            orderItems.push({
-                product_id: product.id,
-                product_variant_id: cartItem.product_variant_id,
-                product_name: product.product_name,
-                product_image: product.product_image,
-                price: product.price,
-                quantity: cartItem.quantity,
-                total_amount: product.price * cartItem.quantity
-            });
-        }
+const orderItems = [];
+
+for (const cartItem of carts.data) {
+
+    const product = productMap.get(cartItem.product_variant_id);
+
+    if (!product) {
+        return res.status(404).json({
+            success: false,
+            message: `Product variant ${cartItem.product_variant_id} not found`
+        });
+    }
+
+    const unitPrice = parseFloat(product.price);
+    const productImage = Object.values(product.images || {})[0] || null;
+
+    orderItems.push({
+        product_id: product.id,
+        product_variant_id: cartItem.product_variant_id,
+        product_name: product.product_name,
+        product_image: productImage,
+        price: unitPrice,
+        quantity: cartItem.quantity,
+        total_amount: unitPrice * cartItem.quantity
+    });
+}
 
         //---------------------------------------------------
         // 5. Calculate subtotal
@@ -139,28 +168,26 @@ const createOrder = async (req, res) => {
         }
 
         //---------------------------------------------------
-        // 6. shipping address
+        // 6. Shipping fee
         //---------------------------------------------------
 
-        const ShippingState = order_shipping_Address.state || shippingAddress.state;
-
-        const shippingFee = ShippingState?.toLowerCase() === "dhaka" ? 60 : 120;
-
+        const shippingState = order_shipping_Address.state || shippingAddress.state;
+        const shippingFee = shippingState?.toLowerCase() === "dhaka" ? 60 : 120;
 
         const total = subtotal + shippingFee;
 
         //---------------------------------------------------
-        // 6. Transaction
+        // 7. Transaction
         //---------------------------------------------------
 
         await connection.beginTransaction();
+        inTransaction = true;
 
         //---------------------------------------------------
-        // 7. Create Order
+        // 8. Create Order
         //---------------------------------------------------
 
         const [orderResult] = await connection.query(
-
             `INSERT INTO orders
             (
                 order_number,
@@ -171,40 +198,26 @@ const createOrder = async (req, res) => {
                 net_amount,
                 status
             )
-            VALUES
-            (?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
-
-                `ORD-${Date.now()}`, // Simple order number generation
-
+                `ORD-${Date.now()}`,
                 req.user.id,
-
                 subtotal,
-
-                0, // discount_amount
-
+                0,
                 shippingFee,
-
                 total,
-
                 "PENDING",
-
             ]
-
         );
 
         const orderId = orderResult.insertId;
 
-
-
         //---------------------------------------------------
-        // 8. Order Items store DB
+        // 9. Order items -> DB
         //---------------------------------------------------
 
         for (const item of orderItems) {
-
             await connection.query(
-
                 `INSERT INTO order_items
                 (
                     order_id,
@@ -217,34 +230,22 @@ const createOrder = async (req, res) => {
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
-
                     orderId,
-
                     item.product_name,
-
                     item.product_id,
-
                     item.product_variant_id,
-
                     item.price,
-
                     item.quantity,
-
                     item.total_amount
-
                 ]
-
             );
-
         }
 
-
         //---------------------------------------------------
-        // 9. Save shipping snapshot
+        // 10. Save shipping snapshot
         //---------------------------------------------------
 
         await connection.query(
-
             `INSERT INTO order_shipping_addresses
             (
                 order_id,
@@ -256,21 +257,13 @@ const createOrder = async (req, res) => {
             )
             VALUES (?, ?, ?, ?, ?, ?)`,
             [
-
                 orderId,
-
                 shippingAddress.id,
-
                 order_shipping_Address.full_address || shippingAddress.full_address,
-
                 order_shipping_Address.state || shippingAddress.state,
-
                 order_shipping_Address.city || shippingAddress.city,
-
                 order_shipping_Address.zip || shippingAddress.zip_code
-
             ]
-
         );
 
         //---------------------------------------------------
@@ -278,7 +271,7 @@ const createOrder = async (req, res) => {
         //---------------------------------------------------
 
         await connection.commit();
-
+        inTransaction = false;
 
         //---------------------------------------------------
         // Return
@@ -295,8 +288,15 @@ const createOrder = async (req, res) => {
             }
         });
 
-
     } catch (error) {
+        if (inTransaction) {
+            try {
+                await connection.rollback();
+            } catch (rollbackError) {
+                console.error("Rollback failed:", rollbackError.message);
+            }
+        }
+
         console.error(error.response?.data || error.message);
 
         return res.status(500).json({

@@ -109,6 +109,13 @@ export const getTopSellingProducts = async () => {
 };
 
 
+//get product by varient id
+export const getProductByVarientId = async (id: number) => {
+  const response = await AxiosInstance.get(`/product-variants/${id}`);
+  return response.data;
+};
+
+
 
 //-------------------------------//
 //PRODUCTS Brands API CALLS

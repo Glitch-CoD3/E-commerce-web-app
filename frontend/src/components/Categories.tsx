@@ -112,7 +112,7 @@ const Categories = () => {
 
             {/* Subcategory Dropdown on Hover */}
             {hasChildren && (
-              <div className="absolute left-0 top-full pt-1.5 hidden group-hover:flex flex-col min-w-[170px] z-50">
+              <div className="absolute left-0 top-full pt-1.5 hidden group-hover:flex flex-col min-w-42.5 z-50">
                 <div className="bg-white border border-gray-100 rounded-lg shadow-xl p-1.5 flex flex-col gap-1">
                   {children.map((child: any) => {
                     const childName = child.category_name || child.name || "";
