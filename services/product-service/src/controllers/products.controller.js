@@ -449,7 +449,7 @@ const getProductById = async (req, res) => {
             `
             SELECT 
                 p.id,
-                p.product_name AS name,
+                p.product_name,
                 p.short_description AS shortDescription,
                 p.description,
                 p.price,
@@ -460,6 +460,11 @@ const getProductById = async (req, res) => {
                 b.id AS brand_id,
                 b.brand_name,
                 b.logo AS brand_logo,
+                (
+              SELECT IFNULL(SUM(pv.stock_quantity), 0)
+              FROM product_variants pv 
+               WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+                ) AS quantity,
                 (
                     SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"')), ']')
                     FROM product_variants pv 
