@@ -216,7 +216,6 @@ const getAllProducts = async (req, res) => {
     b.brand_name,
     b.logo AS brand_logo,
     
-    -- Added: Total Variants Count
     (
         SELECT COUNT(*)
         FROM product_variants pv 
@@ -224,33 +223,38 @@ const getAllProducts = async (req, res) => {
     ) AS total_variants,
 
     (
-        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"')), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"') ORDER BY pv.sizes DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS sizes,
+
     (
-        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"')), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"') ORDER BY pv.colors DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS colors,
+
     (
-        SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"')), '}')
+        SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"') ORDER BY pv.colors DESC), '}')
         FROM product_variants pv
         JOIN variant_images iv ON iv.product_variant_id = pv.id
         WHERE pv.product_id = p.id 
           AND pv.deleted_at IS NULL 
           AND iv.deleted_at IS NULL
     ) AS images,
+
     (
-        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity ORDER BY pv.stock_quantity DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS variant_stocks,
+
     (
-        SELECT CONCAT('[', GROUP_CONCAT(pv.price), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(pv.price ORDER BY pv.price DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS variant_prices
+
 FROM products p
 LEFT JOIN categories c ON p.category_id = c.id
 LEFT JOIN brands b ON p.brand_id = b.id
