@@ -57,7 +57,6 @@ export default function SignupForm() {
         }
       );
 
-      console.log(response);
 
       alert("Registration Successful!");
       

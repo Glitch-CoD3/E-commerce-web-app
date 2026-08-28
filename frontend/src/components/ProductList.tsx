@@ -23,7 +23,7 @@ const ProductList = ({
     const fetchProducts = async () => {
       try {
         const response = await getAllProducts();
-        console.log(response.all_products)
+        
         setProducts(response.all_products);
       } catch (error) {
         console.error("Failed to fetch products:", error);

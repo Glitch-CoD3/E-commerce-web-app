@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axiosInstance from '@/src/api/axiosInstance';
 
 import {
@@ -62,22 +62,11 @@ export type Product = {
   variants?: ProductVariant[];
 };
 
-type VariantImage = {
-  id: string; // Internal temporary ID or numeric image ID string
-  file?: File; // File present only if newly selected
-  previewUrl: string;
-  isExisting?: boolean; // Indicates if image is already saved on server
-};
-
-type FormVariantCard = {
-  id: string; // Unique UI key
-  dbVariantId?: number; // Backend Variant ID (if previously saved)
-  colors: string;
-  sizes: ProductSize | '';
-  price: number | '';
-  stock_quantity: number | '';
-  images: VariantImage[] ;
-  isNew?: boolean;
+type VariantDraft = {
+  color: string;
+  size: ProductSize | '';
+  price: string;
+  stock_quantity: string;
 };
 
 type ProductTabProps = {
@@ -86,6 +75,11 @@ type ProductTabProps = {
   inputBg?: string;
   borderRow?: string;
 };
+
+const emptyDraft: VariantDraft = { color: '', size: '', price: '', stock_quantity: '' };
+
+const getVariantColor = (v: ProductVariant) => v.color || v.colors || '';
+const getVariantSize = (v: ProductVariant) => (v.size || v.sizes || '') as ProductSize | '';
 
 export default function ProductTab({
   formSubBg = 'bg-slate-900',
@@ -109,8 +103,24 @@ export default function ProductTab({
     short_description: '',
     description: '',
     status: 'active' as ProductStatus,
-    variants: [] as FormVariantCard[],
+    price: '' as string,
+    stock_quantity: '' as string,
   });
+
+  // --- Variant panel state ---
+  const [expandedProductId, setExpandedProductId] = useState<number | null>(null);
+  const [variantsByProduct, setVariantsByProduct] = useState<Record<number, ProductVariant[]>>({});
+  const [loadingVariantsFor, setLoadingVariantsFor] = useState<number | null>(null);
+
+  const [editingVariantId, setEditingVariantId] = useState<number | null>(null);
+  const [variantDraft, setVariantDraft] = useState<VariantDraft>(emptyDraft);
+  const [savingVariantId, setSavingVariantId] = useState<number | null>(null);
+
+  const [addingVariantFor, setAddingVariantFor] = useState<number | null>(null);
+  const [newVariantDraft, setNewVariantDraft] = useState<VariantDraft>(emptyDraft);
+  const [creatingVariant, setCreatingVariant] = useState(false);
+
+  const [busyImageKey, setBusyImageKey] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInitialData();
@@ -146,89 +156,6 @@ export default function ProductTab({
     );
   };
 
-  // --- Dynamic Variant Card Management ---
-
-  const addVariantBox = () => {
-    const newBox: FormVariantCard = {
-      id: `new-${Date.now()}-${Math.random()}`,
-      colors: '',
-      sizes: '',
-      price: '',
-      stock_quantity: '',
-      images: [],
-      isNew: true,
-    };
-    setForm(prev => ({ ...prev, variants: [...prev.variants, newBox] }));
-  };
-
-  // DELETE Variant (From UI & Backend if saved)
-  const removeVariantBox = async (v: FormVariantCard) => {
-    if (v.dbVariantId) {
-      if (!confirm('Are you sure you want to delete this variant permanently?')) return;
-      try {
-        await axiosInstance.delete(`/product-variants/${v.dbVariantId}`);
-      } catch (err) {
-        console.error('Failed to delete variant:', err);
-        alert('Could not delete variant from backend.');
-        return;
-      }
-    }
-
-    setForm(prev => ({
-      ...prev,
-      variants: prev.variants.filter(item => item.id !== v.id),
-    }));
-  };
-
-  const updateVariantField = (id: string, field: keyof FormVariantCard, value: any) => {
-    setForm(prev => ({
-      ...prev,
-      variants: prev.variants.map(v => (v.id === id ? { ...v, [field]: value } : v)),
-    }));
-  };
-
-  const handleVariantImageSelect = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-    const files = Array.from(e.target.files);
-
-    const newImages: VariantImage[] = files.map(file => ({
-      id: `img-new-${Math.random()}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-      isExisting: false,
-    }));
-
-    setForm(prev => ({
-      ...prev,
-      variants: prev.variants.map(v =>
-        v.id === id ? { ...v, images: [...v.images, ...newImages] } : v
-      ),
-    }));
-  };
-
-  // DELETE Image (From UI & Backend if saved)
-  const removeVariantImage = async (variantId: string, image: VariantImage) => {
-    if (image.isExisting && image.id) {
-      if (!confirm('Are you sure you want to delete this image permanently?')) return;
-      try {
-        await axiosInstance.delete(`/product-variants-image/${image.id}`);
-      } catch (err) {
-        console.error('Failed to delete image:', err);
-        alert('Failed to delete image from backend.');
-        return;
-      }
-    }
-
-    setForm(prev => ({
-      ...prev,
-      variants: prev.variants.map(v =>
-        v.id === variantId
-          ? { ...v, images: v.images.filter(img => img.id !== image.id) }
-          : v
-      ),
-    }));
-  };
-
   const resetForm = () => {
     setForm({
       product_name: '',
@@ -237,12 +164,13 @@ export default function ProductTab({
       short_description: '',
       description: '',
       status: 'active',
-      variants: [],
+      price: '',
+      stock_quantity: '',
     });
     setEditingId(null);
   };
 
-  // --- SUBMISSION LOGIC ---
+  // --- PRODUCT SUBMIT (create / update product-level fields only) ---
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,31 +182,7 @@ export default function ProductTab({
     setIsSaving(true);
 
     try {
-      const finalVariants: FormVariantCard[] =
-        form.variants.length > 0
-          ? form.variants.map(v => ({
-              ...v,
-              colors: v.colors.trim() ? v.colors.trim() : 'Standard',
-            }))
-          : [
-              {
-                id: 'default-box',
-                colors: 'Standard',
-                sizes: '',
-                price: 0,
-                stock_quantity: 1,
-                images: [],
-              },
-            ];
-
-      const basePrice = Number(finalVariants[0]?.price) || 0;
-      const totalStock = finalVariants.reduce(
-        (acc, v) => acc + (Number(v.stock_quantity) || 0),
-        0
-      );
-
       if (editingId) {
-        // --- UPDATE PRODUCT FLOW (PATCH) ---
         const updatePayload = {
           category_id: Number(form.category_id),
           brand_id: form.brand_id && Number(form.brand_id) > 0 ? Number(form.brand_id) : null,
@@ -286,60 +190,14 @@ export default function ProductTab({
           url_slug: generateSlug(form.product_name),
           description: form.description || null,
           short_description: form.short_description || null,
-          price: String(basePrice),
-          stock_quantity: totalStock,
           status: form.status,
         };
 
-        // 1. Update Product Details via PATCH
         await axiosInstance.patch(`/products/${editingId}`, updatePayload);
-
-        // 2. Loop Through Variants to Update (PATCH) or Create (POST)
-        for (const variantBox of finalVariants) {
-          let variantId = variantBox.dbVariantId;
-
-          const variantPayload = {
-            product_id: Number(editingId),
-            color: variantBox.colors || 'Standard',
-            size: variantBox.sizes || '',
-            price: String(variantBox.price || 0),
-            stock_quantity: Number(variantBox.stock_quantity || 0),
-          };
-
-          if (variantId) {
-            // Update Existing Variant using PATCH
-            await axiosInstance.patch(`/product-variants/${variantId}`, variantPayload);
-          } else {
-            // Create New Variant added during Edit Session
-            const variantRes = await axiosInstance.post('/product-variants', variantPayload);
-            const varData = variantRes.data || {};
-            variantId =
-              varData.created_varient?.id ||
-              varData.created_variant?.id ||
-              varData.variant?.id ||
-              varData.data?.id ||
-              varData.id;
-          }
-
-          // Upload any NEW image files attached to this variant
-          if (variantId && variantBox.images && variantBox.images.length > 0) {
-            for (const imgObj of variantBox.images) {
-              if (imgObj.file) {
-                const compressedFile = await compressImage(imgObj.file);
-                const formData = new FormData();
-                formData.append('image', compressedFile);
-
-                await axiosInstance.post(
-                  `/product-variants-image/${variantId}`,
-                  formData,
-                  { headers: { 'Content-Type': 'multipart/form-data' } }
-                );
-              }
-            }
-          }
-        }
       } else {
-        // --- CREATE BRAND NEW PRODUCT FLOW ---
+        const basePrice = Number(form.price) || 0;
+        const baseStock = Number(form.stock_quantity) || 0;
+
         const productPayload = {
           category_id: Number(form.category_id),
           brand_id: form.brand_id && Number(form.brand_id) > 0 ? Number(form.brand_id) : null,
@@ -348,60 +206,27 @@ export default function ProductTab({
           description: form.description || null,
           short_description: form.short_description || null,
           price: String(basePrice),
-          stock_quantity: totalStock,
+          stock_quantity: baseStock,
           status: form.status,
         };
 
         const productRes = await axiosInstance.post('/products', productPayload);
         const resData = productRes.data || {};
         const createdProductId =
-          resData.created_product?.id ||
-          resData.product?.id ||
-          resData.data?.id ||
-          resData.id;
+          resData.created_product?.id || resData.product?.id || resData.data?.id || resData.id;
 
         if (!createdProductId) {
           throw new Error('Could not retrieve created Product ID.');
         }
 
-        for (const variantBox of finalVariants) {
-          const variantPayload = {
-            product_id: Number(createdProductId),
-            color: variantBox.colors || 'Standard',
-            size: variantBox.sizes || '',
-            price: String(variantBox.price || 0),
-            stock_quantity: Number(variantBox.stock_quantity || 0),
-          };
-
-          const variantRes = await axiosInstance.post('/product-variants', variantPayload);
-          const varData = variantRes.data || {};
-          const createdVariantId =
-            varData.created_varient?.id ||
-            varData.created_variant?.id ||
-            varData.variant?.id ||
-            varData.data?.id ||
-            varData.id;
-
-          if (!createdVariantId) {
-            throw new Error('Could not retrieve created Variant ID.');
-          }
-
-          if (variantBox.images && variantBox.images.length > 0) {
-            for (const imgObj of variantBox.images) {
-              if (imgObj.file) {
-                const compressedFile = await compressImage(imgObj.file);
-                const formData = new FormData();
-                formData.append('image', compressedFile);
-
-                await axiosInstance.post(
-                  `/product-variants-image/${createdVariantId}`,
-                  formData,
-                  { headers: { 'Content-Type': 'multipart/form-data' } }
-                );
-              }
-            }
-          }
-        }
+        // Create a default "Standard" variant so the product has at least one.
+        await axiosInstance.post('/product-variants', {
+          product_id: Number(createdProductId),
+          color: 'Standard',
+          size: '',
+          price: String(basePrice),
+          stock_quantity: baseStock,
+        });
       }
 
       await fetchInitialData();
@@ -411,20 +236,283 @@ export default function ProductTab({
       console.error('Save error details:', error?.response?.data || error?.message || error);
       const serverMessage = error?.response?.data?.message || error?.message;
       alert(`Save Failed: ${serverMessage || 'Check browser console.'}`);
-    } {
+    } finally {
       setIsSaving(false);
     }
   };
 
-  // DELETE PRODUCT
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     try {
       await axiosInstance.delete(`/products/${id}`);
       setProducts(prev => prev.filter(p => p.id !== id));
+      setVariantsByProduct(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (expandedProductId === id) setExpandedProductId(null);
     } catch (error) {
       console.error('Failed to delete:', error);
       alert('Failed to delete product.');
+    }
+  };
+
+  const startEditProduct = (p: Product) => {
+    setEditingId(p.id);
+    const cleanString = (str?: string | null) =>
+      str ? str.replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') : '';
+
+    setForm({
+      product_name: p.product_name || p.name || '',
+      category_id: Number(p.category_id) || 0,
+      brand_id: p.brand_id ? Number(p.brand_id) : undefined,
+      short_description: cleanString(p.short_description),
+      description: cleanString(p.description),
+      status: p.status || 'active',
+      price: '',
+      stock_quantity: '',
+    });
+  };
+
+  // --- VARIANT PANEL ---
+
+  const toggleVariants = async (productId: number) => {
+    if (expandedProductId === productId) {
+      setExpandedProductId(null);
+      return;
+    }
+    setExpandedProductId(productId);
+    setEditingVariantId(null);
+    setAddingVariantFor(null);
+
+    if (!variantsByProduct[productId]) {
+      setLoadingVariantsFor(productId);
+      try {
+        const res = await axiosInstance.get(`/product-variants/product/${productId}`);
+        const data = res.data || {};
+        const list = data.varients;
+      
+        setVariantsByProduct(prev => ({
+          ...prev,
+          [productId]: Array.isArray(list) ? list : [],
+        }));
+      } catch (err) {
+        console.error('Failed to fetch variants:', err);
+        alert('Failed to load variants for this product.');
+        setExpandedProductId(null);
+      } finally {
+        setLoadingVariantsFor(null);
+      }
+    }
+  };
+
+  const startEditVariant = (v: ProductVariant) => {
+    setEditingVariantId(v.id);
+    setVariantDraft({
+      color: getVariantColor(v),
+      size: getVariantSize(v),
+      price: String(v.price ?? ''),
+      stock_quantity: String(v.stock_quantity ?? ''),
+    });
+  };
+
+  const cancelEditVariant = () => {
+    setEditingVariantId(null);
+    setVariantDraft(emptyDraft);
+  };
+
+  const saveVariantEdit = async (productId: number, variantId: number) => {
+    setSavingVariantId(variantId);
+    try {
+      const payload = {
+        product_id: productId,
+        color: variantDraft.color || 'Standard',
+        colors: variantDraft.color || 'Standard',
+        size: variantDraft.size || '',
+        sizes: variantDraft.size || '',
+        price: String(variantDraft.price || 0),
+        stock_quantity: Number(variantDraft.stock_quantity || 0),
+      };
+
+      const response = await axiosInstance.patch(`/product-variants/${variantId}`, payload);
+      const updatedData = response.data?.updated_varient || response.data?.data;
+
+      setVariantsByProduct(prev => {
+        const currentList = prev[productId] || [];
+
+        // Map over existing list to preserve exact index order
+        const updatedList = currentList.map(v => {
+          if (v.id === variantId) {
+            return {
+              ...v,
+              ...updatedData,
+              // Force strict string/number overrides in case backend omits them
+              price: variantDraft.price,
+              stock_quantity: variantDraft.stock_quantity,
+              color: variantDraft.color,
+              colors: variantDraft.color,
+              size: variantDraft.size,
+              sizes: variantDraft.size,
+            };
+          }
+          return v;
+        });
+
+        return {
+          ...prev,
+          [productId]: [...updatedList], // Fresh array reference
+        };
+      });
+
+      setEditingVariantId(null);
+      setVariantDraft(emptyDraft);
+    } catch (err) {
+      console.error('Failed to update variant:', err);
+      alert('Failed to update variant.');
+    } finally {
+      setSavingVariantId(null);
+    }
+  };
+
+  const deleteVariant = async (productId: number, variantId: number) => {
+    if (!confirm('Are you sure you want to delete this variant permanently?')) return;
+    try {
+      await axiosInstance.delete(`/product-variants/${variantId}`);
+      setVariantsByProduct(prev => ({
+        ...prev,
+        [productId]: (prev[productId] || []).filter(v => v.id !== variantId),
+      }));
+    } catch (err) {
+      console.error('Failed to delete variant:', err);
+      alert('Failed to delete variant from backend.');
+    }
+  };
+
+  const startAddVariant = (productId: number) => {
+    setAddingVariantFor(productId);
+    setNewVariantDraft(emptyDraft);
+  };
+
+  const cancelAddVariant = () => {
+    setAddingVariantFor(null);
+    setNewVariantDraft(emptyDraft);
+  };
+
+  const createVariant = async (productId: number) => {
+    setCreatingVariant(true);
+    try {
+      const payload = {
+        product_id: Number(productId),
+        color: newVariantDraft.color || 'Standard',
+        size: newVariantDraft.size || '',
+        price: String(newVariantDraft.price || 0),
+        stock_quantity: Number(newVariantDraft.stock_quantity || 0),
+      };
+      const res = await axiosInstance.post('/product-variants', payload);
+      const data = res.data || {};
+      const created: ProductVariant =
+        data.created_varient;
+      console.log(data);
+      setVariantsByProduct(prev => ({
+        ...prev,
+        [productId]: [...(prev[productId] || []), created],
+      }));
+      setAddingVariantFor(null);
+      setNewVariantDraft(emptyDraft);
+    } catch (err) {
+      console.error('Failed to create variant:', err);
+      alert('Failed to create variant.');
+    } finally {
+      setCreatingVariant(false);
+    }
+  };
+
+  // --- VARIANT IMAGES ---
+
+  const addVariantImage = async (productId: number, variantId: number, file: File) => {
+    const key = `add-${variantId}`;
+    setBusyImageKey(key);
+    try {
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      formData.append('image', compressed);
+      const res = await axiosInstance.post(`/product-variants-image/${variantId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const data = res.data || {};
+      const newImage: ProductVariantImage = data.data || data.image || data;
+
+      setVariantsByProduct(prev => ({
+        ...prev,
+        [productId]: (prev[productId] || []).map(v =>
+          v.id === variantId
+            ? { ...v, images: [...(v.images || []), newImage] }
+            : v
+        ),
+      }));
+    } catch (err) {
+      console.error('Failed to add image:', err);
+      alert('Failed to upload image.');
+    } finally {
+      setBusyImageKey(null);
+    }
+  };
+
+  const replaceVariantImage = async (
+    productId: number,
+    variantId: number,
+    imageId: number,
+    file: File
+  ) => {
+    const key = `replace-${imageId}`;
+    setBusyImageKey(key);
+    try {
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      formData.append('image', compressed);
+      const res = await axiosInstance.patch(`/product-variants-images/${imageId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const data = res.data || {};
+      const updatedUrl = data.data?.image_url || data.image_url;
+
+      setVariantsByProduct(prev => ({
+        ...prev,
+        [productId]: (prev[productId] || []).map(v =>
+          v.id === variantId
+            ? {
+              ...v,
+              images: (v.images || []).map(img =>
+                img.id === imageId ? { ...img, image_url: updatedUrl || img.image_url } : img
+              ),
+            }
+            : v
+        ),
+      }));
+    } catch (err) {
+      console.error('Failed to replace image:', err);
+      alert('Failed to replace image.');
+    } finally {
+      setBusyImageKey(null);
+    }
+  };
+
+  const deleteVariantImage = async (productId: number, variantId: number, imageId: number) => {
+    if (!confirm('Are you sure you want to delete this image permanently?')) return;
+    try {
+      await axiosInstance.delete(`/product-variants-image/${imageId}`);
+      setVariantsByProduct(prev => ({
+        ...prev,
+        [productId]: (prev[productId] || []).map(v =>
+          v.id === variantId
+            ? { ...v, images: (v.images || []).filter(img => img.id !== imageId) }
+            : v
+        ),
+      }));
+    } catch (err) {
+      console.error('Failed to delete image:', err);
+      alert('Failed to delete image from backend.');
     }
   };
 
@@ -437,7 +525,6 @@ export default function ProductTab({
           {editingId ? 'Edit Product' : 'Add New Product'}
         </h3>
 
-        {/* Basic Fields */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1">Product Title</label>
@@ -523,156 +610,47 @@ export default function ProductTab({
           </div>
         </div>
 
-        {/* --- DYNAMIC VARIANT BOXES --- */}
-        <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between">
+        {/* Base price/stock only shown when creating a brand-new product */}
+        {!editingId && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl border border-dashed border-slate-800">
             <div>
-              <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">Product Variants</h4>
-              <p className="text-[11px] text-slate-400">Configure size, color, stock, and upload images per variant.</p>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Base Price ($)</label>
+              <input
+                type="number"
+                required
+                disabled={isSaving}
+                value={form.price}
+                onChange={e => setForm({ ...form, price: e.target.value })}
+                className={`w-full text-xs p-2.5 rounded-lg border outline-none ${inputBg}`}
+                placeholder="0.00"
+              />
             </div>
-
-            <button
-              type="button"
-              onClick={addVariantBox}
-              disabled={isSaving}
-              className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5"
-            >
-              <span>+ Add Variant Box</span>
-            </button>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Initial Stock</label>
+              <input
+                type="number"
+                required
+                disabled={isSaving}
+                value={form.stock_quantity}
+                onChange={e => setForm({ ...form, stock_quantity: e.target.value })}
+                className={`w-full text-xs p-2.5 rounded-lg border outline-none ${inputBg}`}
+                placeholder="0"
+              />
+            </div>
+            <p className="md:col-span-2 text-[11px] text-slate-500">
+              This creates a "Standard" variant automatically. You can add more variants, edit them,
+              or manage images from the product list below once the product is created.
+            </p>
           </div>
+        )}
 
-          {form.variants.length === 0 ? (
-            <div className="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
-              No custom variants added. (A standard variant will be created on save).
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {form.variants.map((v, index) => (
-                <div key={v.id} className="p-4 rounded-xl border border-indigo-500/20 bg-slate-950/80 space-y-4 relative">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                      Variant #{index + 1}
-                      {v.dbVariantId && (
-                        <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
-                          Saved (ID: {v.dbVariantId})
-                        </span>
-                      )}
-                      {v.isNew && (
-                        <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded border border-amber-500/20">
-                          New
-                        </span>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeVariantBox(v)}
-                      className="text-xs text-rose-400 hover:text-rose-300 font-semibold"
-                    >
-                      Delete Variant
-                    </button>
-                  </div>
-
-                  {/* Fields */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Color</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Red"
-                        value={v.colors}
-                        onChange={e => updateVariantField(v.id, 'colors', e.target.value)}
-                        className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Size</label>
-                      <select
-                        value={v.sizes}
-                        onChange={e => updateVariantField(v.id, 'sizes', e.target.value as ProductSize)}
-                        className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
-                      >
-                        <option value="">Select Size</option>
-                        <option value="M">M</option>
-                        <option value="L">L</option>
-                        <option value="XL">XL</option>
-                        <option value="XXL">XXL</option>
-                        <option value="3XL">3XL</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Price ($)</label>
-                      <input
-                        type="number"
-                        placeholder="0.00"
-                        value={v.price}
-                        onChange={e => updateVariantField(v.id, 'price', e.target.value)}
-                        className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Stock Quantity</label>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        value={v.stock_quantity}
-                        onChange={e => updateVariantField(v.id, 'stock_quantity', e.target.value)}
-                        className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Image Upload Box */}
-                  <div className="space-y-2 pt-2 border-t border-slate-800/60">
-                    <label className="block text-[11px] font-semibold text-slate-400">
-                      Images for ({v.colors || 'Variant'})
-                    </label>
-
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={e => handleVariantImageSelect(v.id, e)}
-                      className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-indigo-600 file:text-white file:text-xs"
-                    />
-
-                    {v.images.length > 0 && (
-                      <div className="flex gap-2 items-center flex-wrap pt-2">
-                        {v.images.map(img => (
-                          <div key={img.id} className="relative group">
-                            <img
-                              src={img.previewUrl}
-                              alt="variant preview"
-                              className="w-12 h-12 object-cover rounded border border-slate-700"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeVariantImage(v.id, img)}
-                              className="absolute -top-1.5 -right-1.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Buttons */}
         <div className="flex gap-3 pt-2">
           <button
             type="submit"
             disabled={isSaving}
             className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all"
           >
-            {isSaving ? 'Saving...' : editingId ? 'Update Product & Variants' : 'Save Product'}
+            {isSaving ? 'Saving...' : editingId ? 'Update Product' : 'Save Product'}
           </button>
 
           {editingId && (
@@ -719,69 +697,288 @@ export default function ProductTab({
               products.map((p, index) => {
                 const categoryObj = (categories || []).find(c => c && String(c.id) === String(p.category_id));
                 const brandObj = (brands || []).find(b => b && String(b.id) === String(p.brand_id));
+                const loadedVariants = variantsByProduct[p.id];
+                const variantCount =
+                  loadedVariants?.length ??
+                  p.total_variants ??
+                  (Array.isArray(p.variants) ? p.variants.length : 0);
+                const isExpanded = expandedProductId === p.id;
 
                 return (
-                  <tr key={p?.id ? `prod-${p.id}` : index} className={`hover:bg-indigo-500/5 ${borderRow}`}>
-                    <td className="p-3 font-bold text-white">{p.product_name || p.name || '—'}</td>
-                    <td className="p-3 text-xs text-slate-400">{p.category_name || categoryObj?.category_name || '—'}</td>
-                    <td className="p-3 text-xs text-slate-400">{p.brand_name || brandObj?.brand_name || brandObj?.name || '—'}</td>
-                    <td className="p-3 text-xs">
-                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                        p.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
-                      }`}>
-                        {p.status || 'inactive'}
-                      </span>
-                    </td>
-                    <td className="p-3 text-xs font-mono text-indigo-400">
-                      {p.total_variants ?? (Array.isArray(p.variants) ? p.variants.length : 0)} Variant(s)
-                    </td>
-                    <td className="p-3 font-bold">{p.stock_quantity ?? 0}</td>
-                    <td className="p-3 text-right space-x-2">
-                      <button
-                        onClick={() => {
-                          setEditingId(p.id);
+                  <React.Fragment key={p?.id ? `prod-${p.id}` : index}>
+                    <tr className={`hover:bg-indigo-500/5 ${borderRow}`}>
+                      <td className="p-3 font-bold text-white">{p.name || '—'}</td>
+                      <td className="p-3 text-xs text-slate-400">{p.category_name || '—'}</td>
+                      <td className="p-3 text-xs text-slate-400">{p.brand_name || '—'}</td>
+                      <td className="p-3 text-xs">
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${p.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                          {p.status || 'inactive'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => toggleVariants(p.id)}
+                          className={`font-mono px-2 py-1 rounded-md border transition ${isExpanded
+                            ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300'
+                            : 'border-slate-700 text-indigo-400 hover:bg-indigo-600/10'
+                            }`}
+                        >
+                          {variantCount} Variant{variantCount === 1 ? '' : 's'} {isExpanded ? '▲' : '▼'}
+                        </button>
+                      </td>
+                      <td className="p-3 font-bold">{p.stock_quantity ?? 0}</td>
+                      <td className="p-3 text-right space-x-2">
+                        <button onClick={() => startEditProduct(p)} className="text-xs text-indigo-400 hover:underline">
+                          Edit
+                        </button>
+                        <button onClick={() => handleDelete(p.id)} className="text-xs text-rose-500 hover:underline">
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
 
-                          const cleanString = (str?: string | null) =>
-                            str ? str.replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"') : '';
+                    {isExpanded && (
+                      <tr className={borderRow}>
+                        <td colSpan={7} className="p-0">
+                          <div className="bg-slate-950/60 border-y border-indigo-500/10 p-4 space-y-3">
+                            {loadingVariantsFor === p.id ? (
+                              <p className="text-xs text-slate-400 text-center py-4">Loading variants...</p>
+                            ) : (
+                              <>
+                                {(variantsByProduct[p.id] || []).length === 0 ? (
+                                  <p className="text-xs text-slate-500 text-center py-3">No variants for this product yet.</p>
+                                ) : (
+                                  <div className="grid grid-cols-1 gap-3">
+                                    {(variantsByProduct[p.id] || []).map(v => {
+                                      const isEditingThis = editingVariantId === v.id;
+                                      return (
+                                        <div key={v.id} className="p-3 rounded-xl border border-slate-800 bg-slate-900/70 space-y-3">
+                                          {isEditingThis ? (
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                                              <div>
+                                                <label className="block text-[10px] text-slate-400 mb-1">Color</label>
+                                                <input
+                                                  type="text"
+                                                  value={variantDraft.color}
+                                                  onChange={e => setVariantDraft({ ...variantDraft, color: e.target.value })}
+                                                  className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="block text-[10px] text-slate-400 mb-1">Size</label>
+                                                <select
+                                                  value={variantDraft.size}
+                                                  onChange={e => setVariantDraft({ ...variantDraft, size: e.target.value as ProductSize })}
+                                                  className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                                >
+                                                  <option value="">Select Size</option>
+                                                  <option value="M">M</option>
+                                                  <option value="L">L</option>
+                                                  <option value="XL">XL</option>
+                                                  <option value="XXL">XXL</option>
+                                                  <option value="3XL">3XL</option>
+                                                </select>
+                                              </div>
+                                              <div>
+                                                <label className="block text-[10px] text-slate-400 mb-1">Price ($)</label>
+                                                <input
+                                                  type="number"
+                                                  value={variantDraft.price}
+                                                  onChange={e => setVariantDraft({ ...variantDraft, price: e.target.value })}
+                                                  className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="block text-[10px] text-slate-400 mb-1">Stock</label>
+                                                <input
+                                                  type="number"
+                                                  value={variantDraft.stock_quantity}
+                                                  onChange={e => setVariantDraft({ ...variantDraft, stock_quantity: e.target.value })}
+                                                  className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                                />
+                                              </div>
+                                              <div className="flex gap-2">
+                                                <button
+                                                  type="button"
+                                                  disabled={savingVariantId === v.id}
+                                                  onClick={() => saveVariantEdit(p.id, v.id)}
+                                                  className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg font-bold"
+                                                >
+                                                  {savingVariantId === v.id ? '...' : 'Save'}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={cancelEditVariant}
+                                                  className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg font-bold"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                              <div className="flex flex-wrap gap-4 text-xs">
+                                                <span><span className="text-slate-500">Color:</span> {getVariantColor(v)}</span>
+                                                <span><span className="text-slate-500">Size:</span> {getVariantSize(v)}</span>
+                                                <span><span className="text-slate-500">Price:</span> ${v.price ?? 0}</span>
+                                                <span><span className="text-slate-500">Stock:</span> {v.stock_quantity ?? 0}</span>
+                                              </div>
+                                              <div className="flex gap-3">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => startEditVariant(v)}
+                                                  className="text-xs text-indigo-400 hover:underline font-semibold"
+                                                >
+                                                  Edit
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => deleteVariant(p.id, v.id)}
+                                                  className="text-xs text-rose-400 hover:underline font-semibold"
+                                                >
+                                                  Delete
+                                                </button>
+                                              </div>
+                                            </div>
+                                          )}
 
-                          let mappedVariants: FormVariantCard[] = [];
+                                          {/* Images */}
+                                          <div className="flex gap-2 flex-wrap items-center pt-2 border-t border-slate-800/60">
+                                            {(v.images || []).map(img => (
+                                              <div key={img.id} className="relative group w-14 h-14">
+                                                <img
+                                                  src={img.image_url}
+                                                  alt="variant"
+                                                  className="w-14 h-14 object-cover rounded border border-slate-700"
+                                                />
+                                                <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition rounded flex flex-col items-center justify-center gap-1">
+                                                  <label className="text-[9px] text-indigo-300 underline cursor-pointer">
+                                                    Replace
+                                                    <input
+                                                      type="file"
+                                                      accept="image/*"
+                                                      className="hidden"
+                                                      onChange={e => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) replaceVariantImage(p.id, v.id, img.id, file);
+                                                      }}
+                                                    />
+                                                  </label>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => deleteVariantImage(p.id, v.id, img.id)}
+                                                    className="text-[9px] text-rose-400 underline"
+                                                  >
+                                                    Delete
+                                                  </button>
+                                                </div>
+                                                {busyImageKey === `replace-${img.id}` && (
+                                                  <div className="absolute inset-0 bg-black/70 rounded flex items-center justify-center text-[8px] text-white">...</div>
+                                                )}
+                                              </div>
+                                            ))}
+                                            <label className="w-14 h-14 border border-dashed border-slate-700 rounded flex items-center justify-center text-[9px] text-slate-500 cursor-pointer hover:border-indigo-500 hover:text-indigo-400">
+                                              {busyImageKey === `add-${v.id}` ? '...' : '+ Add'}
+                                              <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={e => {
+                                                  const file = e.target.files?.[0];
+                                                  if (file) addVariantImage(p.id, v.id, file);
+                                                }}
+                                              />
+                                            </label>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
 
-                          if (Array.isArray(p.variants) && p.variants.length > 0) {
-                            mappedVariants = p.variants.map((v, vIdx) => ({
-                              id: v?.id ? String(v.id) : `var-${vIdx}`,
-                              dbVariantId: v?.id,
-                              colors: v?.color || v?.colors || '',
-                              sizes: (v?.size || v?.sizes || '') as ProductSize | '',
-                              price: Number(v?.price ?? p.price) || 0,
-                              stock_quantity: Number(v?.stock_quantity ?? p.stock_quantity) || 0,
-                              images: (Array.isArray(v?.images) ? v.images : []).map((img, imgIdx) => ({
-                                id: img?.id ? String(img.id) : `img-${imgIdx}`,
-                                previewUrl: img?.image_url || '',
-                                isExisting: true,
-                              })),
-                              isNew: false,
-                            }));
-                          }
-
-                          setForm({
-                            product_name: p.product_name || p.name || '',
-                            category_id: Number(p.category_id) || 0,
-                            brand_id: p.brand_id ? Number(p.brand_id) : undefined,
-                            short_description: cleanString(p.short_description),
-                            description: cleanString(p.description),
-                            status: p.status || 'active',
-                            variants: mappedVariants,
-                          });
-                        }}
-                        className="text-xs text-indigo-400 hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button onClick={() => handleDelete(p.id)} className="text-xs text-rose-500 hover:underline">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
+                                {/* Add variant */}
+                                {addingVariantFor === p.id ? (
+                                  <div className="p-3 rounded-xl border border-indigo-500/30 bg-slate-900/70 space-y-2">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                                      <div>
+                                        <label className="block text-[10px] text-slate-400 mb-1">Color</label>
+                                        <input
+                                          type="text"
+                                          value={newVariantDraft.color}
+                                          onChange={e => setNewVariantDraft({ ...newVariantDraft, color: e.target.value })}
+                                          className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[10px] text-slate-400 mb-1">Size</label>
+                                        <select
+                                          value={newVariantDraft.size}
+                                          onChange={e => setNewVariantDraft({ ...newVariantDraft, size: e.target.value as ProductSize })}
+                                          className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                        >
+                                          <option value="">Select Size</option>
+                                          <option value="M">M</option>
+                                          <option value="L">L</option>
+                                          <option value="XL">XL</option>
+                                          <option value="XXL">XXL</option>
+                                          <option value="3XL">3XL</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-[10px] text-slate-400 mb-1">Price ($)</label>
+                                        <input
+                                          type="number"
+                                          value={newVariantDraft.price}
+                                          onChange={e => setNewVariantDraft({ ...newVariantDraft, price: e.target.value })}
+                                          className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[10px] text-slate-400 mb-1">Stock</label>
+                                        <input
+                                          type="number"
+                                          value={newVariantDraft.stock_quantity}
+                                          onChange={e => setNewVariantDraft({ ...newVariantDraft, stock_quantity: e.target.value })}
+                                          className={`w-full text-xs p-2 rounded-lg border outline-none ${inputBg}`}
+                                        />
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button
+                                          type="button"
+                                          disabled={creatingVariant}
+                                          onClick={() => createVariant(p.id)}
+                                          className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg font-bold"
+                                        >
+                                          {creatingVariant ? '...' : 'Create'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={cancelAddVariant}
+                                          className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg font-bold"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => startAddVariant(p.id)}
+                                    className="text-xs bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 px-3 py-2 rounded-lg font-bold"
+                                  >
+                                    + Add Variant
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })
             )}
@@ -790,4 +987,5 @@ export default function ProductTab({
       </div>
     </div>
   );
+
 }
