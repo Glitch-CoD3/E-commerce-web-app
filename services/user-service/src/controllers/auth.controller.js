@@ -607,6 +607,8 @@ const refresh = async (req, res) => {
 const get_me = async (req, res) => {
     try {
         const user_id = req.user?.id
+        // console.log(user_id)
+        // console.log("session_id", req.user.session_id)
 
         if (!user_id) {
             return res.status(401).json({

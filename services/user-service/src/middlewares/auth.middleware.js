@@ -12,11 +12,13 @@ export const verifyJWT = async (req, res, next) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // console.log("decoded", decoded.id)
 
         const [user] = await DB.promise().query(
             `SELECT id, role_id FROM users WHERE id = ?`,
-            [decoded.id]
+            [decoded.id.id]
         );
+        console.log("user", user)
 
         if (user.length === 0) {
             return res.status(401).json({
