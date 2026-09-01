@@ -18,7 +18,7 @@ export const verifyJWT = async (req, res, next) => {
             `SELECT id, role_id FROM users WHERE id = ?`,
             [decoded.id.id]
         );
-        console.log("user", user)
+        // console.log("user", user)
 
         if (user.length === 0) {
             return res.status(401).json({

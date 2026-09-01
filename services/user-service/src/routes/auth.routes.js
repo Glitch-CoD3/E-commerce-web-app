@@ -1,11 +1,14 @@
 import express from 'express';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
+import { ROLES } from "../constants.js";
+import { allowRoles } from "../middlewares/authorize.middleware.js";
 
 const router = express.Router();
 import {
     registerUser, resend_otp, loginUser, refresh,
     OTP_verification, verify_resend_OTP, log_out, get_me,
-    logout_all_devices, forgot_password, reset_password
+    logout_all_devices, forgot_password, reset_password,
+    getUserById
 } from '../controllers/auth.controller.js';
 
 
@@ -86,6 +89,14 @@ router.post('/reset-password', reset_password)
  */
 
 router.put('/change-password', verifyJWT, reset_password)
+
+
+/**
+ * @name POST /api/v1/auth/user/:id
+ * @description Logged in user can change password
+ *@access private 
+ */
+router.get('/user/:id', verifyJWT, allowRoles(ROLES.ADMIN), getUserById )
 
 
 export default router;
