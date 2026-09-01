@@ -1,6 +1,6 @@
 import DB from '../config/db.config.js'
 import { getAllCart } from '../utils/axiosClient.js'
-import { getProductsByIds, getProductByVariantId } from '../utils/product.api.js'
+import { getProductsByIds, getProductByVariantId, getProductVarientImage } from '../utils/product.api.js'
 import { getShippingAddressByUserId } from '../utils/getShippingAddress.api.js'
 const connection = await DB.promise().getConnection();
 /**
@@ -10,24 +10,22 @@ const connection = await DB.promise().getConnection();
  */
 
 const createOrder = async (req, res) => {
-    let inTransaction = false;
-
     try {
 
         if (!req.body) {
             return res.status(401).json({
                 success: false,
-                message: "No data field passed from req.body"
-            });
+                message: " Mo data field passes from req.body "
+            })
         }
 
-        const { full_address, state, city, zip } = req.body;
+        const { full_address, state, city, zip } = req.body
 
         if (!full_address || !state || !city) {
             return res.status(401).json({
                 success: false,
-                message: "Full address, state and city are required"
-            });
+                message: " Full address, state and city are required "
+            })
         }
 
         const order_shipping_Address = {
@@ -35,7 +33,8 @@ const createOrder = async (req, res) => {
             state,
             city,
             zip
-        };
+        }
+
 
         const token = req.cookies.refreshToken || req.headers.authorization?.split(' ')[1];
 
@@ -44,110 +43,87 @@ const createOrder = async (req, res) => {
         //---------------------------------------------------
 
         const carts = await getAllCart(token);
+        // console.log("Carts: ",carts)
 
-        if (!carts?.data || carts.data.length === 0) {
+        if (carts.data.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: "Cart is empty"
             });
         }
 
-       //---------------------------------------------------
-// 2. Get latest products (batch fetch)
-//---------------------------------------------------
+        //---------------------------------------------------
+        // 2. Get latest products
+        //---------------------------------------------------
 
-const productVariantIds = carts.data.map(item => item.product_variant_id);
+        const productIds = carts.data.map(item => item.product_id);
 
-const productsResponse = await getProductsByIds(productVariantIds, token);
+        //---------------------------------------------------
+        // 3. Validate products
+        //---------------------------------------------------
 
-// Normalize whatever shape comes back into a flat array
-const fetchedProducts = Array.isArray(productsResponse)
-    ? productsResponse
-    : Array.isArray(productsResponse?.data)
-        ? productsResponse.data
-        : productsResponse
-            ? [productsResponse]
-            : [];
+        const products = [];
 
-if (fetchedProducts.length === 0) {
-    return res.status(404).json({
-        success: false,
-        message: "Products not found"
-    });
-}
+        for (const id of productIds) {
 
-//---------------------------------------------------
-// 3. Validate products
-//---------------------------------------------------
+            const product = await getProductsByIds(id, token);
+            // console.log("product:", product)
 
-const productMap = new Map(); // key: id (variant id) -> product
+            if (!product) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Product ${id} not found`
+                });
+            }
 
-for (const product of fetchedProducts) {
-    productMap.set(product.id, product);
-}
+            const cartItem = carts.data.find(
+                item => item.product_id === id
+            );
 
-for (const variantId of productVariantIds) {
+            if (product.stock_quantity < cartItem.quantity) {
+                return res.status(400).json({
+                    success: false,
+                    message: `${product.name} has only ${product.stock_quantity} items in stock`
+                });
+            }
 
-    const product = productMap.get(variantId);
+            products.push(product);
+        }
 
-    if (!product) {
-        return res.status(404).json({
-            success: false,
-            message: `Product variant ${variantId} not found`
-        });
-    }
 
-    const cartItem = carts.data.find(
-        item => item.product_variant_id === variantId
-    );
+        //---------------------------------------------------
+        // 4. Create Order Items
+        //---------------------------------------------------
 
-    if (!cartItem) {
-        return res.status(400).json({
-            success: false,
-            message: `Cart item for variant ${variantId} not found`
-        });
-    }
+        const orderItems = [];
 
-    const stockQuantity = Number(product.quantity);
+        for (const cartItem of carts.data) {
 
-    if (stockQuantity < cartItem.quantity) {
-        return res.status(400).json({
-            success: false,
-            message: `${product.product_name} has only ${stockQuantity} items in stock`
-        });
-    }
-}
+            const product = products.find(
+                p => p.id === cartItem.product_id
+            );
 
-//---------------------------------------------------
-// 4. Create Order Items
-//---------------------------------------------------
+            if (!product) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Product ${cartItem.product_id} not found`
+                });
+            }
 
-const orderItems = [];
+            //Verify product varient available or not
+            var varient = await getProductByVariantId(cartItem.product_variant_id, token);
 
-for (const cartItem of carts.data) {
+            var varientImage = await getProductVarientImage(cartItem.product_variant_id, token);
 
-    const product = productMap.get(cartItem.product_variant_id);
-
-    if (!product) {
-        return res.status(404).json({
-            success: false,
-            message: `Product variant ${cartItem.product_variant_id} not found`
-        });
-    }
-
-    const unitPrice = parseFloat(product.price);
-    const productImage = Object.values(product.images || {})[0] || null;
-
-    orderItems.push({
-        product_id: product.id,
-        product_variant_id: cartItem.product_variant_id,
-        product_name: product.product_name,
-        product_image: productImage,
-        price: unitPrice,
-        quantity: cartItem.quantity,
-        total_amount: unitPrice * cartItem.quantity
-    });
-}
+            orderItems.push({
+                product_id: product.id,
+                product_variant_id: cartItem.product_variant_id,
+                product_name: product.name,
+                price: product.price,
+                quantity: cartItem.quantity,
+                total_amount: product.price * cartItem.quantity
+            });
+        }
 
         //---------------------------------------------------
         // 5. Calculate subtotal
@@ -168,26 +144,28 @@ for (const cartItem of carts.data) {
         }
 
         //---------------------------------------------------
-        // 6. Shipping fee
+        // 6. shipping address
         //---------------------------------------------------
 
-        const shippingState = order_shipping_Address.state || shippingAddress.state;
-        const shippingFee = shippingState?.toLowerCase() === "dhaka" ? 60 : 120;
+        const ShippingState = order_shipping_Address.state || shippingAddress.state;
+
+        const shippingFee = ShippingState?.toLowerCase() === "dhaka" ? 60 : 120;
+
 
         const total = subtotal + shippingFee;
 
         //---------------------------------------------------
-        // 7. Transaction
+        // 6. Transaction
         //---------------------------------------------------
 
         await connection.beginTransaction();
-        inTransaction = true;
 
         //---------------------------------------------------
-        // 8. Create Order
+        // 7. Create Order
         //---------------------------------------------------
 
         const [orderResult] = await connection.query(
+
             `INSERT INTO orders
             (
                 order_number,
@@ -198,26 +176,40 @@ for (const cartItem of carts.data) {
                 net_amount,
                 status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            VALUES
+            (?, ?, ?, ?, ?, ?, ?)`,
             [
-                `ORD-${Date.now()}`,
+
+                `ORD-${Date.now()}`, // Simple order number generation
+
                 req.user.id,
+
                 subtotal,
-                0,
+
+                0, // discount_amount
+
                 shippingFee,
+
                 total,
+
                 "PENDING",
+
             ]
+
         );
 
         const orderId = orderResult.insertId;
 
+
+
         //---------------------------------------------------
-        // 9. Order items -> DB
+        // 8. Order Items store DB
         //---------------------------------------------------
 
         for (const item of orderItems) {
+
             await connection.query(
+
                 `INSERT INTO order_items
                 (
                     order_id,
@@ -230,22 +222,34 @@ for (const cartItem of carts.data) {
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
+
                     orderId,
+
                     item.product_name,
+
                     item.product_id,
+
                     item.product_variant_id,
+
                     item.price,
+
                     item.quantity,
+
                     item.total_amount
+
                 ]
+
             );
+
         }
 
+
         //---------------------------------------------------
-        // 10. Save shipping snapshot
+        // 9. Save shipping snapshot
         //---------------------------------------------------
 
         await connection.query(
+
             `INSERT INTO order_shipping_addresses
             (
                 order_id,
@@ -257,13 +261,21 @@ for (const cartItem of carts.data) {
             )
             VALUES (?, ?, ?, ?, ?, ?)`,
             [
+
                 orderId,
+
                 shippingAddress.id,
+
                 order_shipping_Address.full_address || shippingAddress.full_address,
+
                 order_shipping_Address.state || shippingAddress.state,
+
                 order_shipping_Address.city || shippingAddress.city,
+
                 order_shipping_Address.zip || shippingAddress.zip_code
+
             ]
+
         );
 
         //---------------------------------------------------
@@ -271,7 +283,7 @@ for (const cartItem of carts.data) {
         //---------------------------------------------------
 
         await connection.commit();
-        inTransaction = false;
+
 
         //---------------------------------------------------
         // Return
@@ -284,19 +296,18 @@ for (const cartItem of carts.data) {
                 orderId,
                 orderStatus: "PENDING_PAYMENT",
                 paymentStatus: "UNPAID",
-                totalAmount: total
+                totalAmount: total,
+                varient: {
+                    color: varient.product_varient.colors,
+                    size: varient.product_varient.sizes,
+                    price: varient.product_varient.price,
+                    image: varientImage[0].image_url
+                },
             }
         });
 
-    } catch (error) {
-        if (inTransaction) {
-            try {
-                await connection.rollback();
-            } catch (rollbackError) {
-                console.error("Rollback failed:", rollbackError.message);
-            }
-        }
 
+    } catch (error) {
         console.error(error.response?.data || error.message);
 
         return res.status(500).json({
@@ -307,7 +318,6 @@ for (const cartItem of carts.data) {
 };
 
 
-
 /**
  * @method POST /api/v1/buy-now
  * @description Directly order by clicking Buy Now button
@@ -315,10 +325,9 @@ for (const cartItem of carts.data) {
  */
 const buyNowDirectly = async (req, res) => {
     let connection;
+    let transactionStarted = false;
 
     try {
-
-
         const {
             products,
             full_address,
@@ -338,10 +347,54 @@ const buyNowDirectly = async (req, res) => {
             });
         }
 
-        if (!full_address || !state || !city) {
+        if (products.length > 20) {
+            return res.status(400).json({
+                success: false,
+                message: "Too many items in a single order."
+            });
+        }
+
+        for (const item of products) {
+            if (!item.product_id || (typeof item.product_id !== "number" && typeof item.product_id !== "string")) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Each product requires a valid product_id."
+                });
+            }
+            if (
+                item.product_variant_id !== undefined &&
+                item.product_variant_id !== null &&
+                typeof item.product_variant_id !== "number" &&
+                typeof item.product_variant_id !== "string"
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid product_variant_id."
+                });
+            }
+            if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid quantity for product ${item.product_id}.`
+                });
+            }
+        }
+
+        if (
+            typeof full_address !== "string" || !full_address.trim() ||
+            typeof state !== "string" || !state.trim() ||
+            typeof city !== "string" || !city.trim()
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "Full address, state and city are required."
+            });
+        }
+
+        if (zip && !/^[A-Za-z0-9\- ]{3,12}$/.test(zip)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid zip code format."
             });
         }
 
@@ -356,7 +409,7 @@ const buyNowDirectly = async (req, res) => {
         connection = await DB.promise().getConnection();
 
         //---------------------------------------------------
-        // Validate Products
+        // Validate Products (and variants, where specified)
         //---------------------------------------------------
 
         const orderItems = [];
@@ -367,6 +420,7 @@ const buyNowDirectly = async (req, res) => {
                 item.product_id,
                 token
             );
+            // console.log("product:", product)
 
             if (!product) {
                 return res.status(404).json({
@@ -375,21 +429,77 @@ const buyNowDirectly = async (req, res) => {
                 });
             }
 
-            if (product.stock_quantity < item.quantity) {
+            let variant = null;
+            let variantImage = null;
+
+            if (item.product_variant_id) {
+
+                variant = await getProductByVariantId(
+                    item.product_variant_id,
+                    token
+                );
+                // console.log("varient:", variant)
+                if (!variant) {
+                    return res.status(404).json({
+                        success: false,
+                        message: `Variant ${item.product_variant_id} not found`
+                    });
+                }
+
+                // Ensure the variant actually belongs to the requested product —
+                // prevents a mismatched product_id/product_variant_id pair from
+                // silently pricing/stocking against the wrong item.
+                if (String(variant.product_varient.product_id) !== String(product.id)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Variant ${item.product_variant_id} does not belong to product ${item.product_id}`
+                    });
+                }
+
+                // Exact image for this specific variant. A missing image
+                // should not block checkout, so we fall back rather than
+                // returning a 404 here.
+                variantImage = await getProductVarientImage(
+                    item.product_variant_id,
+                    token
+                );
+            }
+
+            // console.log("variant image:", variantImage)
+
+            // Stock check — against the variant's own stock when a variant is
+            // specified, otherwise the base product's stock.
+            const availableStock = variant
+                ? variant.stock_quantity
+                : product.stock_quantity;
+
+            if (availableStock < item.quantity) {
                 return res.status(400).json({
                     success: false,
-                    message: `${product.product_name} has only ${product.stock_quantity} in stock`
+                    message: `${product.name} has only ${availableStock} in stock`
                 });
             }
 
+            // Price — variant price overrides base product price when present.
+            const unitPrice = variant?.price ?? product.price;
+
+            // Image — the exact variant image when available, falling back to
+            // the matching color image on the base product, then null.
+            const productImage =
+                variantImage ||
+                (variant?.color && product.images?.[variant.color]) ||
+                null;
+
             orderItems.push({
                 product_id: product.id,
-                product_variant_id: item.product_variant_id || null,
-                product_name: product.product_name,
-                product_image: product.product_image,
-                price: product.price,
+                product_variant_id: variant.product_varient.id,
+                product_name: product.name,
+                product_image: productImage,
+                variant_size: variant?.size || null,
+                variant_color: variant?.color || null,
+                price: unitPrice,
                 quantity: item.quantity,
-                total_amount: product.price * item.quantity
+                total_amount: unitPrice * item.quantity
             });
         }
 
@@ -402,9 +512,8 @@ const buyNowDirectly = async (req, res) => {
             0
         );
 
-        const shippingState = state;
         const shippingFee =
-            shippingState?.toLowerCase() === "dhaka" ? 60 : 120;
+            state.toLowerCase() === "dhaka" ? 60 : 120;
 
         const total = subtotal + shippingFee;
 
@@ -413,10 +522,13 @@ const buyNowDirectly = async (req, res) => {
         //---------------------------------------------------
 
         await connection.beginTransaction();
+        transactionStarted = true;
 
         //---------------------------------------------------
         // Create Order
         //---------------------------------------------------
+
+        const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
         const [orderResult] = await connection.query(
             `
@@ -433,7 +545,7 @@ const buyNowDirectly = async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?)
             `,
             [
-                `ORD-${Date.now()}`,
+                orderNumber,
                 req.user.id,
                 subtotal,
                 0,
@@ -495,9 +607,9 @@ const buyNowDirectly = async (req, res) => {
             `,
             [
                 orderId,
-                full_address,
-                state,
-                city,
+                full_address.trim(),
+                state.trim(),
+                city.trim(),
                 zip || null
             ]
         );
@@ -517,6 +629,7 @@ const buyNowDirectly = async (req, res) => {
             message: "Order created successfully.",
             data: {
                 orderId,
+                orderNumber,
                 orderStatus: "PENDING",
                 paymentStatus: "UNPAID",
                 totalAmount: total
@@ -525,15 +638,19 @@ const buyNowDirectly = async (req, res) => {
 
     } catch (error) {
 
-        if (connection) {
-            await connection.rollback();
+        if (connection && transactionStarted) {
+            try {
+                await connection.rollback();
+            } catch (rollbackError) {
+                console.error("Rollback failed:", rollbackError);
+            }
         }
 
-        console.error(error);
+        console.error("buyNowDirectly error:", error);
 
         return res.status(500).json({
             success: false,
-            message: error.message
+            message: "Something went wrong while placing your order. Please try again."
         });
 
     } finally {
@@ -544,7 +661,6 @@ const buyNowDirectly = async (req, res) => {
 
     }
 };
-
 
 /**
  * @method GET /api/v1/:id
@@ -736,6 +852,14 @@ const getOrderByOrderId = async (req, res) => {
             `,
             [orderId]
         );
+
+
+        if (itemsResult.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Items not found!"
+            });
+        }
 
         //---------------------------------------------------
         // Response
@@ -1039,6 +1163,14 @@ const getAllOrders = async (req, res) => {
             [...values, limit, offset]
         );
 
+        console.log(orders[0])
+
+        if (orders.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Order not fetched"
+            });
+        }
         //---------------------------------------------------
         // Response
         //---------------------------------------------------
@@ -1081,9 +1213,7 @@ const getAllOrders = async (req, res) => {
 
 const orderDashboardStatistics = async (req, res) => {
     try {
-        //---------------------------------------------------
-        // 1. Query Params & Input Validation
-        //---------------------------------------------------
+        // 1. Input Validation
         const year = parseInt(req.query.year, 10) || new Date().getFullYear();
         const month = req.query.month ? parseInt(req.query.month, 10) : null;
 
@@ -1094,43 +1224,28 @@ const orderDashboardStatistics = async (req, res) => {
             });
         }
 
-        //---------------------------------------------------
-        // 2. High-Performance Date Range (Index Friendly)
-        //---------------------------------------------------
+        // 2. Index-Friendly Date Range Construction
         let startDate, endDate;
-
         if (month) {
-            // Start of the specific month
             startDate = new Date(year, month - 1, 1);
-            // Start of the next month
             endDate = new Date(year, month, 1);
         } else {
-            // Start of the year
             startDate = new Date(year, 0, 1);
-            // Start of the next year
             endDate = new Date(year + 1, 0, 1);
         }
 
-        const whereClause = `WHERE created_at >= ? AND created_at < ?`;
-        const values = [startDate, endDate];
-
-        //---------------------------------------------------
-        // 3. Optimized Aggregate Query
-        //---------------------------------------------------
+        // 3. Optimized Aggregation Query
         const [rows] = await connection.query(
             `
             SELECT
                 COUNT(*) AS totalOrders,
-                
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingOrders,
                 SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmedOrders,
                 SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processingOrders,
                 SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) AS shippedOrders,
                 SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS deliveredOrders,
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelledOrders,
-
                 SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) AS totalPaidOrders,
-
                 COALESCE(
                     SUM(
                         CASE 
@@ -1140,18 +1255,15 @@ const orderDashboardStatistics = async (req, res) => {
                         END
                     ), 0
                 ) AS totalRevenue
-
             FROM orders
-            ${whereClause}
+            WHERE created_at >= ? AND created_at < ?
             `,
-            values
+            [startDate, endDate]
         );
 
         const rawData = rows[0];
 
-        //---------------------------------------------------
-        // 4. Parse DB Strings to Numbers & Calculate Derived Metrics
-        //---------------------------------------------------
+        // 4. Metric Calculations
         const totalOrders = Number(rawData.totalOrders || 0);
         const pendingOrders = Number(rawData.pendingOrders || 0);
         const confirmedOrders = Number(rawData.confirmedOrders || 0);
@@ -1160,28 +1272,23 @@ const orderDashboardStatistics = async (req, res) => {
         const deliveredOrders = Number(rawData.deliveredOrders || 0);
         const cancelledOrders = Number(rawData.cancelledOrders || 0);
         const totalPaidOrders = Number(rawData.totalPaidOrders || 0);
-        const totalRevenue = parseFloat(rawData.totalRevenue || 0);
+        const totalRevenue = Number(rawData.totalRevenue || 0);
 
-        // Calculate Average Order Value (AOV)
         const averageOrderValue = totalPaidOrders > 0
-            ? parseFloat((totalRevenue / totalPaidOrders).toFixed(2))
+            ? Number((totalRevenue / totalPaidOrders).toFixed(2))
             : 0;
 
-        // Calculate Order Fulfillment & Cancellation rates
         const completionRatePercentage = totalOrders > 0
-            ? parseFloat(((deliveredOrders / totalOrders) * 100).toFixed(2))
+            ? Number(((deliveredOrders / totalOrders) * 100).toFixed(2))
             : 0;
 
         const cancellationRatePercentage = totalOrders > 0
-            ? parseFloat(((cancelledOrders / totalOrders) * 100).toFixed(2))
+            ? Number(((cancelledOrders / totalOrders) * 100).toFixed(2))
             : 0;
 
-        // Orders needing action by store fulfillment team
         const actionableOrdersCount = pendingOrders + confirmedOrders + processingOrders;
 
-        //---------------------------------------------------
-        // 5. Response Structured for Admin Frontend
-        //---------------------------------------------------
+        // 5. Response Payload
         return res.status(200).json({
             success: true,
             filter: {
@@ -1221,7 +1328,6 @@ const orderDashboardStatistics = async (req, res) => {
         });
     }
 };
-
 
 /**
  * @method GET /api/v1/orders/admin/:orderId

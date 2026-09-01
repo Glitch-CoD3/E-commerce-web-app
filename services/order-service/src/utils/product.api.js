@@ -58,4 +58,33 @@ const getProductByVariantId = async (id, token) => {
     }
 };
 
-export { getProductsByIds, getProductByVariantId };
+
+
+const getProductVarientImage = async (id, token) => {
+    try {
+        const response = await axios.get(
+            `${process.env.PRODUCT_SERVICE_URL}/api/v1/product-variants-images/${id}`,
+            {
+                headers: {
+                    Cookie: `refreshToken=${token}`,
+                },
+            }
+        );
+
+        // Adjust 'variant' to match your API response body key (e.g. response.data.variant or response.data.data)
+        return response.data.variant || response.data.data || response.data;
+
+    } catch (error) {
+        console.log("Axios Error:");
+
+        if (error.response) {
+            console.log("Status:", error.response.status);
+            console.log("Data:", error.response.data);
+        } else {
+            console.log(error.message);
+        }
+
+        throw error;
+    }
+};
+export { getProductsByIds, getProductByVariantId, getProductVarientImage };
