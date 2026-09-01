@@ -1,7 +1,6 @@
 import DB from "../config/db.config.js";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { admin_role_id, user_role_id } from "../constants.js";
 import { generate_access_token, generate_refresh_token } from "../utils/token_generator_verify.js";
 import { hashPassword, comparePassword } from "../utils/hash_password.js";
 import { sendEmail } from "../utils/email_service_otp_send.js";
@@ -643,6 +642,47 @@ const get_me = async (req, res) => {
 
 
 /**
+ * @name POST /api/v1/auth/user/:id
+ * @description user get self data
+ *@access private 
+ */
+const getUserById = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        if (!id) {
+            return res.status(400).json({
+                message: 'User id is required'
+            })
+        }
+
+        const [user_data] = await DB.promise().query(
+            `SELECT full_name, email, phone_number FROM users WHERE id = ?`, [id]
+        )
+
+        if (user_data.length === 0) {
+            return res.status(404).json({
+                message: 'User not Found'
+            })
+        }
+
+        const user = user_data[0]
+
+        return res.status(200).json({
+            success: "success",
+            user: user
+        })
+
+    } catch (error) {
+        console.error("Internal server Error", error)
+        return res.status(500).json({
+            message: "Internel server Error From getUserById Controller"
+        })
+    }
+}
+
+
+/**
  * @name POST /api/v1/auth/forgot-password
  * @name POST /api/v1/auth/reset-password
  * @description User can change his password if they forget their password
@@ -744,4 +784,5 @@ export {
     registerUser, resend_otp, loginUser, refresh,
     OTP_verification, verify_resend_OTP, log_out, get_me,
     logout_all_devices, forgot_password, reset_password,
+    getUserById
 };
