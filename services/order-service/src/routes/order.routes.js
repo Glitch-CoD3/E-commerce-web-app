@@ -34,14 +34,10 @@ const router = express.Router();
 // Authenticated User Routes (Global JWT Middleware)
 // =====================================================
 
-/**
- * @middleware verifyJWT
- * @description All routes defined below require an authenticated user.
- */
 router.use(verifyJWT);
 
 /**
- * @method POST /api/v1/orders
+ * @method POST /api/v1/order
  * @description Create a new order from the authenticated user's cart.
  * @access Private (User)
  */
@@ -76,7 +72,7 @@ router.patch("/:orderId/cancel", order_cancel);
 // router.post("/returns/request", createReturnRequest);
 
 // =====================================================
-// Admin Routes (Order & Fulfillment Management)
+// Admin Routes - STATIC & ANALYTICS PATHS (FIXED: Moved above dynamic routes)
 // =====================================================
 
 /**
@@ -91,52 +87,14 @@ router.get(
 );
 
 /**
- * @method GET /api/v1/orders/admin/:orderId
- * @description Get detailed information about any specific order.
- * @access Private (Admin)
+ * NOTE [FIX 1]: Added alias route for dashboard statistics.
+ * Handles calls to /api/v1/orders/admin/dashboard-statistics
  */
 router.get(
-    "/admin/:orderId",
+    "/admin/dashboard-statistics",
     allowRoles(ROLES.ADMIN),
-    getOrderDetailsByOrderId
+    orderDashboardStatistics
 );
-
-/**
- * @method PATCH /api/v1/orders/admin/:orderId/update_payment_status
- * @description Update the payment status of an order.
- * @access Private (Admin)
- */
-router.patch(
-    "/admin/:orderId/update_payment_status",
-    allowRoles(ROLES.ADMIN),
-    updatePaymentStatus
-);
-
-/**
- * @method PATCH /api/v1/orders/admin/:orderId/status
- * @description Update the fulfillment status of an order (Processing, Shipped, Delivered, etc.).
- * @access Private (Admin)
- */
-router.patch(
-    "/admin/:orderId/status",
-    allowRoles(ROLES.ADMIN),
-    updateOrderStatus
-);
-
-/**
- * @method POST /api/v1/orders/admin/refund
- * @description Process a return refund and restock product inventory.
- * @access Private (Admin)
- */
-// router.post(
-//     "/admin/refund",
-//     allowRoles(ROLES.ADMIN),
-//     processRefund
-// );
-
-// =====================================================
-// Admin Analytics Routes
-// =====================================================
 
 /**
  * @method GET /api/v1/orders/admin/dashboard
@@ -148,6 +106,11 @@ router.get(
     allowRoles(ROLES.ADMIN),
     orderDashboardStatistics
 );
+
+/**
+ * NOTE [FIX 2]: Moved all static analytics routes ABOVE /admin/:orderId.
+ * Previously, calling /admin/analytics/* was caught by /admin/:orderId as req.params.orderId = "analytics".
+ */
 
 /**
  * @method GET /api/v1/orders/admin/analytics/sales-trend
@@ -194,7 +157,42 @@ router.get(
 );
 
 // =====================================================
-// Dynamic User Routes (MUST BE AT THE BOTTOM)
+// Admin Routes - DYNAMIC PATHS
+// =====================================================
+
+/**
+ * NOTE [FIX 3]: Placed dynamic admin route after all static /admin routes.
+ */
+router.get(
+    "/admin/:orderId",
+    allowRoles(ROLES.ADMIN),
+    getOrderDetailsByOrderId
+);
+
+/**
+ * @method PATCH /api/v1/orders/admin/:orderId/update_payment_status
+ * @description Update the payment status of an order.
+ * @access Private (Admin)
+ */
+router.patch(
+    "/admin/:orderId/update_payment_status",
+    allowRoles(ROLES.ADMIN),
+    updatePaymentStatus
+);
+
+/**
+ * @method PATCH /api/v1/orders/admin/:orderId/status
+ * @description Update the fulfillment status of an order.
+ * @access Private (Admin)
+ */
+router.patch(
+    "/admin/:orderId/status",
+    allowRoles(ROLES.ADMIN),
+    updateOrderStatus
+);
+
+// =====================================================
+// Dynamic User Routes (MUST ALWAYS BE AT THE VERY BOTTOM)
 // =====================================================
 
 /**
