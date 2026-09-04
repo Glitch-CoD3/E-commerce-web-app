@@ -22,6 +22,7 @@ import {
     // processRefund,
 
     // New Analytics Controllers
+    getAllPaidCustomers,
     getTopSellingProducts,
     getSalesTrendOverTime,
     getInventoryAlerts,
@@ -156,6 +157,17 @@ router.get(
     getCustomerAnalytics
 );
 
+
+/**
+ * @method GET /api/v1/orders/admin/analytics/customer-metrics/paid-customers
+ * @description Get customer lifetime value and repeat purchase analytics.
+ * @access Private (Admin)
+ */
+router.get(
+    "/admin/analytics/customer-metrics/paid-customers",
+    allowRoles(ROLES.ADMIN),
+    getAllPaidCustomers
+);
 // =====================================================
 // Admin Routes - DYNAMIC PATHS
 // =====================================================

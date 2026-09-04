@@ -159,3 +159,17 @@ export type TopSellingTabProps = {
   tableHeaderBg: string;
   borderRow: string;
 };
+
+export type PaidCustomer = {
+  customerId: number;
+  customerName: string;
+  emailAddress: string;
+  mobileNumber?: string;
+  shippingAddress: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingZipCode?: string;
+  lastOrderDate: string;
+  totalPaidOrders: number;
+  totalPaid: string;
+};

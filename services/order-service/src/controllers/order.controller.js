@@ -672,11 +672,14 @@ const getOrdersByUserId = async (req, res) => {
     let connection;
 
     try {
-
         connection = await DB.promise().getConnection();
 
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 10;
+        const offset = (page - 1) * limit;
+
         //---------------------------------------------------
-        // Get User Orders
+        // Get User Orders (paginated)
         //---------------------------------------------------
 
         const [orders] = await connection.query(
@@ -689,13 +692,15 @@ const getOrdersByUserId = async (req, res) => {
                 shipping_charge,
                 net_amount,
                 status,
+                payment_status,
                 created_at,
                 updated_at
             FROM orders
             WHERE user_id = ?
             ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
             `,
-            [req.user.id]
+            [req.user.id, limit, offset]
         );
 
         //---------------------------------------------------
@@ -706,62 +711,70 @@ const getOrdersByUserId = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 message: "No orders found.",
+                pagination: { page, limit, totalCount: 0, totalPages: 0 },
                 data: []
             });
         }
 
+        const orderIds = orders.map(o => o.id);
+
         //---------------------------------------------------
-        // Attach Items & Shipping Address
+        // Order Items (batched, not per-order)
         //---------------------------------------------------
 
-        const result = [];
+        const [items] = await connection.query(
+            `
+            SELECT
+                id,
+                order_id,
+                product_id,
+                product_variant_id,
+                product_name,
+                price,
+                quantity,
+                total_amount
+            FROM order_items
+            WHERE order_id IN (?)
+            `,
+            [orderIds]
+        );
 
-        for (const order of orders) {
+        //---------------------------------------------------
+        // Shipping Addresses (batched, not per-order)
+        //---------------------------------------------------
 
-            //-----------------------------------------
-            // Order Items
-            //-----------------------------------------
+        const [shippingAddresses] = await connection.query(
+            `
+            SELECT
+                order_id,
+                full_address,
+                state,
+                city,
+                zip_code
+            FROM order_shipping_addresses
+            WHERE order_id IN (?)
+            `,
+            [orderIds]
+        );
 
-            const [items] = await connection.query(
-                `
-                SELECT
-                    id,
-                    product_id,
-                    product_variant_id,
-                    product_name,
-                    price,
-                    quantity,
-                    total_amount
-                FROM order_items
-                WHERE order_id = ?
-                `,
-                [order.id]
-            );
+        //---------------------------------------------------
+        // Merge in JS
+        //---------------------------------------------------
 
-            //-----------------------------------------
-            // Shipping Address
-            //-----------------------------------------
+        const result = orders.map(order => ({
+            ...order,
+            items: items.filter(item => item.order_id === order.id),
+            shipping_address: shippingAddresses.find(s => s.order_id === order.id) || null
+        }));
 
-            const [shipping] = await connection.query(
-                `
-                SELECT
-                    full_address,
-                    state,
-                    city,
-                    zip_code
-                FROM order_shipping_addresses
-                WHERE order_id = ?
-                LIMIT 1
-                `,
-                [order.id]
-            );
+        //---------------------------------------------------
+        // Total Count for Pagination
+        //---------------------------------------------------
 
-            result.push({
-                ...order,
-                items,
-                shipping_address: shipping[0] || null
-            });
-        }
+        const [[{ totalCount }]] = await connection.query(
+            `SELECT COUNT(*) AS totalCount FROM orders WHERE user_id = ?`,
+            [req.user.id]
+        );
 
         //---------------------------------------------------
         // Response
@@ -770,25 +783,25 @@ const getOrdersByUserId = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Orders retrieved successfully.",
-            totalOrders: result.length,
+            pagination: {
+                page,
+                limit,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit)
+            },
             data: result
         });
 
     } catch (error) {
-
         console.error(error);
-
         return res.status(500).json({
             success: false,
             message: error.message
         });
-
     } finally {
-
         if (connection) {
             connection.release();
         }
-
     }
 };
 
@@ -1820,6 +1833,109 @@ const getCustomerAnalytics = async (req, res) => {
 };
 
 
+/**
+ * @method GET /api/v1/orders/admin/analytics/customer-metrics/paid-customers
+ * @description Get customer lifetime value and repeat purchase analytics
+ * @access Private (Admin)
+ */
+const getAllPaidCustomers = async (req, res) => {
+    let connection;
+
+    try {
+        connection = await DB.promise().getConnection();
+
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 20;
+        const offset = (page - 1) * limit;
+
+        //---------------------------------------------------
+        // Get Paid Customers (latest paid order + totals)
+        //---------------------------------------------------
+
+        const [customers] = await connection.query(
+            `
+            WITH paid_orders AS (
+                SELECT 
+                    o.id,
+                    o.user_id,
+                    o.net_amount,
+                    o.created_at,
+                    ROW_NUMBER() OVER (PARTITION BY o.user_id ORDER BY o.created_at DESC) AS rn
+                FROM orders o
+                WHERE UPPER(o.payment_status) = 'PAID'
+            ),
+            customer_totals AS (
+                SELECT 
+                    user_id,
+                    COUNT(*) AS totalPaidOrders,
+                    SUM(net_amount) AS totalPaid
+                FROM orders
+                WHERE UPPER(payment_status) = 'PAID'
+                GROUP BY user_id
+            )
+            SELECT
+                u.id AS customerId,
+                u.full_name AS customerName,
+                u.email AS emailAddress,
+                u.phone_number AS mobileNumber,
+                osa.full_address AS shippingAddress,
+                osa.city AS shippingCity,
+                osa.state AS shippingState,
+                osa.zip_code AS shippingZipCode,
+                po.created_at AS lastOrderDate,
+                ct.totalPaidOrders,
+                ct.totalPaid
+            FROM paid_orders po
+            JOIN users u ON u.id = po.user_id
+            JOIN customer_totals ct ON ct.user_id = po.user_id
+            LEFT JOIN order_shipping_addresses osa ON osa.order_id = po.id
+            WHERE po.rn = 1
+            ORDER BY po.created_at DESC
+            LIMIT ? OFFSET ?
+            `,
+            [limit, offset]
+        );
+
+        //---------------------------------------------------
+        // Total Count (distinct paid customers)
+        //---------------------------------------------------
+
+        const [[{ totalCount }]] = await connection.query(
+            `
+            SELECT COUNT(DISTINCT user_id) AS totalCount
+            FROM orders
+            WHERE UPPER(payment_status) = 'PAID'
+            `
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Paid customers retrieved successfully.",
+            pagination: {
+                page,
+                limit,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit)
+            },
+            data: customers
+        });
+
+    } catch (error) {
+        console.error("Get All Paid Customers Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    } finally {
+        if (connection) {
+            connection.release();
+        }
+    }
+};
+
+
+
+
 export {
     createOrder,
     buyNowDirectly,
@@ -1834,5 +1950,6 @@ export {
     getTopSellingProducts,
     getSalesTrendOverTime,
     getInventoryAlerts,
-    getCustomerAnalytics
+    getCustomerAnalytics,
+    getAllPaidCustomers,
 };
