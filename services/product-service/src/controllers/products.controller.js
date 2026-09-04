@@ -229,7 +229,7 @@ const getAllProducts = async (req, res) => {
     ) AS sizes,
 
     (
-        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"') ORDER BY pv.colors DESC), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"') ORDER BY pv.colors ASC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS colors,
@@ -244,7 +244,7 @@ const getAllProducts = async (req, res) => {
     ) AS images,
 
     (
-        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity ORDER BY pv.stock_quantity DESC), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity ORDER BY pv.stock_quantity ASC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS variant_stocks,
