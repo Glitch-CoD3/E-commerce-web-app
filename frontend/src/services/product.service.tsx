@@ -64,7 +64,7 @@ export type Product = {
   id: number;
   category_id: number;
   brand_id?: number | null;
-  product_name: string;
+  name: string;
   url_slug: string;
   description?: string | null;
   short_description?: string | null;
@@ -96,14 +96,19 @@ export const createProduct = async (data: any) => {
 };
 
 // Get all Products API call
-export const getAllProducts = async () => {
-  const response = await AxiosInstance.get("/products");
+export const getAllProducts = async (page: number = 1, perPage: number = 10) => {
+  const response = await AxiosInstance.get("/products", {
+    params: {
+      page,
+      per_page: perPage,
+    },
+  });
   return response.data;
 };
 
 
 //Get Top Selling Products API call
-export const getTopSellingProducts = async () => {
+export const getTopSellingProducts = async (page: number = 1, perPage: number = 10) => {
   const response = await AxiosInstance.get("/products/top-selling");
   return response.data;
 };
@@ -137,8 +142,13 @@ export type Brand = {
 
 
 // Get all Brands API call
-export const getAllBrands = async () => {
-  const response = await AxiosInstance.get("/brands");
+export const getAllBrands = async (page: number = 1, perPage: number = 10) => {
+  const response = await AxiosInstance.get("/brands", {
+    params: {
+      page,
+      per_page: perPage,
+    },
+  });
   return response.data;
 };
 
@@ -212,6 +222,103 @@ export type CreateVariantInput = {
   images?: CreateVariantImageInput[];
 };
 
+export type VariantDraft = {
+  color: string;
+  size: ProductSize | '';
+  price: string;
+  stock_quantity: string;
+};
+
+export type ProductTabProps = {
+  formSubBg?: string;
+  tableHeaderBg?: string;
+  inputBg?: string;
+  borderRow?: string;
+};
+
+export type ProductTableProps = {
+  products: Product[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalProducts: number;
+    pageSize: number;
+  };
+  isFetchingData: boolean;
+  tableHeaderBg: string;
+  borderRow: string;
+  inputBg: string;
+
+  expandedProductId: number | null;
+  variantsByProduct: Record<number, ProductVariant[]>;
+  loadingVariantsFor: number | null;
+  onToggleVariants: (productId: number) => void;
+
+  onEditProduct: (p: Product) => void;
+  onDeleteProduct: (id: number) => void;
+
+  editingVariantId: number | null;
+  variantDraft: VariantDraft;
+  setVariantDraft: React.Dispatch<React.SetStateAction<VariantDraft>>;
+  savingVariantId: number | null;
+  onStartEditVariant: (v: ProductVariant) => void;
+  onCancelEditVariant: () => void;
+  onSaveVariantEdit: (productId: number, variantId: number) => void;
+  onDeleteVariant: (productId: number, variantId: number) => void;
+
+  addingVariantFor: number | null;
+  newVariantDraft: VariantDraft;
+  setNewVariantDraft: React.Dispatch<React.SetStateAction<VariantDraft>>;
+  creatingVariant: boolean;
+  onStartAddVariant: (productId: number) => void;
+  onCancelAddVariant: () => void;
+  onCreateVariant: (productId: number) => void;
+
+  busyImageKey: string | null;
+  onAddImage: (productId: number, variantId: number, file: File) => void;
+  onReplaceImage: (productId: number, variantId: number, imageId: number, file: File) => void;
+  onDeleteImage: (productId: number, variantId: number, imageId: number) => void;
+};
+
+
+export type PaginationMeta = {
+  current_page: number;
+  total_pages: number;
+  total_products: number;
+  per_page: number;
+  search?: string;
+}
+
+export type PaginatedProductTableProps = Omit<ProductTableProps, 'pagination'> & {
+  pagination?: PaginationMeta;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  onCategoryChange?: (category: string) => void;
+}
 
 
 
+//-------------ProductForm.tsx Admin Dashboard------------------//
+export type ProductFormState = {
+  product_name: string;
+  category_id: number;
+  brand_id: number | undefined;
+  short_description: string;
+  description: string;
+  status: ProductStatus;
+  price: string;
+  stock_quantity: string;
+};
+
+export type ProductFormProps = {
+  form: ProductFormState;
+  setForm: React.Dispatch<React.SetStateAction<ProductFormState>>;
+  categories: CategoryType[];
+  brands: Brand[];
+  editingId: number | null;
+  isSaving: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  onCancelEdit: () => void;
+  formSubBg: string;
+  inputBg: string;
+};

@@ -173,3 +173,6 @@ export type PaidCustomer = {
   totalPaidOrders: number;
   totalPaid: string;
 };
+
+
+
