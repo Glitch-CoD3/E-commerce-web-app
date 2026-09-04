@@ -114,3 +114,48 @@ export type OrderTabProps = {
   tableHeaderBg: string;
   borderRow: string;
 };
+
+
+// Top selling Product tab in ADMIN dashboard
+export type ProductVariantRanked = {
+  // Rank & Status
+  rank: number;
+  productStatus?: string;
+  
+  // Product Info
+  productId: string;
+  productName: string;
+  categoryName?: string;
+  currentStock?: number;
+  
+  // Variant Info
+  variantId?: number | string;
+  variantLabel?: string;
+  variantColor?: string;
+  variantSize?: string;
+  variantStock?: number;
+  
+  // Sales & Revenue Metrics
+  totalUnitsSold: string | number;
+  totalOrders: number;
+  totalRevenueGenerated: string;
+  avgSellingPrice: string;
+  basePrice: string;
+  avgUnitsPerOrder?: string;
+  revenueSharePercent: string;
+  
+  // Optional raw nested variants array if passing raw products
+  variants?: Array<{
+    id?: string | number;
+    color?: string;
+    size?: string;
+    price?: number;
+    stock?: number;
+  }>;
+};
+
+export type TopSellingTabProps = {
+  products?: ProductVariantRanked[];
+  tableHeaderBg: string;
+  borderRow: string;
+};

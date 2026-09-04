@@ -1588,43 +1588,76 @@ const updatePaymentStatus = async (req, res) => {
 const getTopSellingProducts = async (req, res) => {
     try {
         const limit = parseInt(req.query.limit, 10) || 5;
-        const vendorId = req.query.vendorId || null; // Optional vendor filter
+        const categoryId = req.query.categoryId || null; // Optional category filter
+        // const vendorId = req.query.vendorId || null; // BLOCKED: products table has no vendor_id — confirm source
 
-        let vendorWhere = "";
-        const values = [];
+        let filterWhere = "";
+        const filterValues = [];
 
-        if (vendorId) {
-            vendorWhere = "WHERE p.vendor_id = ?";
-            values.push(vendorId);
+        if (categoryId) {
+            filterWhere = "WHERE p.category_id = ?";
+            filterValues.push(categoryId);
         }
 
-        values.push(limit);
+        const values = [...filterValues, limit];
 
         const [products] = await connection.query(
             `
             SELECT 
                 p.id AS productId,
                 p.product_name AS productName,
-                p.price,
+                p.price AS basePrice,
+                p.stock_quantity AS currentStock,
+                p.status AS productStatus,
+                c.category_name AS categoryName,
+                oi.product_variant_id AS variantId,
+                pv.colors AS variantColor,
+                pv.sizes AS variantSize,
+                CONCAT_WS(' / ', pv.colors, pv.sizes) AS variantLabel,
+                pv.stock_quantity AS variantStock,
+                COUNT(DISTINCT oi.order_id) AS totalOrders,
                 SUM(oi.quantity) AS totalUnitsSold,
-                COALESCE(SUM(oi.quantity * oi.price), 0) AS totalRevenueGenerated
+                COALESCE(SUM(oi.total_amount), 0) AS totalRevenueGenerated,
+                ROUND(AVG(oi.quantity), 2) AS avgUnitsPerOrder,
+                ROUND(COALESCE(SUM(oi.total_amount), 0) / NULLIF(SUM(oi.quantity), 0), 2) AS avgSellingPrice,
+                ROUND(
+                    COALESCE(SUM(oi.total_amount), 0) * 100.0 /
+                    NULLIF((
+                        SELECT SUM(oi2.total_amount)
+                        FROM order_items oi2
+                        JOIN orders o2 ON oi2.order_id = o2.id
+                        WHERE UPPER(o2.payment_status) = 'PAID'
+                        AND LOWER(o2.status) <> 'cancelled'
+                    ), 0),
+                2) AS revenueSharePercent
             FROM order_items oi
-            JOIN products p ON oi.product_id = p.id
             JOIN orders o ON oi.order_id = o.id
-            ${vendorWhere}
-            ${vendorWhere ? "AND" : "WHERE"} LOWER(o.payment_status) = 'paid' 
+            JOIN products p ON oi.product_id = p.id
+            LEFT JOIN product_variants pv ON oi.product_variant_id = pv.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            ${filterWhere}
+            ${filterWhere ? "AND" : "WHERE"} UPPER(o.payment_status) = 'PAID'
             AND LOWER(o.status) <> 'cancelled'
-            GROUP BY p.id, p.product_name, p.price
+            AND p.deleted_at IS NULL
+            GROUP BY 
+                p.id, p.product_name, p.price, p.stock_quantity, p.status,
+                c.category_name, oi.product_variant_id, pv.colors, pv.sizes, pv.stock_quantity
             ORDER BY totalUnitsSold DESC
             LIMIT ?
             `,
             values
         );
 
+        const rankedProducts = products.map((item, index) => ({
+            rank: index + 1,
+            ...item
+        }));
+
         return res.status(200).json({
             success: true,
-            message: "Top Selling Products",
-            data: products
+            message: "Top Selling Products (with variant breakdown)",
+            count: rankedProducts.length,
+            data: rankedProducts
         });
     } catch (error) {
         console.error("Top Selling Products Error:", error);
