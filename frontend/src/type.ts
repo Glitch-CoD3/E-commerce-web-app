@@ -1,4 +1,5 @@
 import { z } from "zod";
+import {  type ReactNode } from 'react';
 
 export type ProductType = {
   id: number;
@@ -69,4 +70,47 @@ export type CartStoreActionsType = {
   addToCart: (product: CartItemType) => void;
   removeFromCart: (product: CartItemType) => void;
   clearCart: () => void;
+};
+
+
+// .........................order Type.........................
+export type OrderStatus = 'paid' | 'pending' | 'unpaid' | 'cancelled' | 'shipped';
+
+export type OrderItem = {
+  productId: string;
+  productName: string;
+  variantDetails: string;
+  quantity: number;
+  price: number;
+};
+
+export type RawOrder = {
+  id: string;
+  user_id: string;
+  customerName?: string;
+  customerEmail?: string;
+  address?: string;
+  created_at: string;
+  status: OrderStatus;
+  items: OrderItem[];
+  net_amount: number;
+};
+
+export type Order = {
+  id: string;
+  user_id: string;
+  customerName: string;
+  customerEmail: string;
+  address: string;
+  created_at: string;
+  status: OrderStatus;
+  items: OrderItem[];
+  net_amount: number;
+};
+
+export type OrderTabProps = {
+  onSelectOrder: (order: Order) => void;
+  getStatusBadge: (status: OrderStatus) => ReactNode;
+  tableHeaderBg: string;
+  borderRow: string;
 };

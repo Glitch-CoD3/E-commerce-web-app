@@ -88,93 +88,117 @@ const ProductCard = ({ product }: { product: ProductType }) => {
           className="object-cover hover:scale-105 transition-transform duration-300"
         />
 
+        {/* Brand Name - Top Left */}
+        {product.brand_name && (
+          <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm">
+            {product.brand_name}
+          </span>
+        )}
+
+        {/* Stock Badge - Top Right */}
         {isSelectedVariantOutOfStock ? (
-          <span className="absolute top-2 left-2 bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded">
+          <span className="absolute top-3 right-3 bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm">
             Out of Stock
           </span>
         ) : currentStock <= 5 ? (
-          <span className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-semibold px-2 py-1 rounded">
+          <span className="absolute top-3 right-3 bg-amber-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm">
             Only {currentStock} left
           </span>
         ) : null}
       </Link>
 
       <div className="flex flex-col gap-4 p-4">
+        {/* Product Name & Description */}
         <div>
-          <h1 className="font-medium">{product.name}</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight text-gray-900 line-clamp-1">
+            {product.name}
+          </h1>
           <p className="text-sm text-gray-500 line-clamp-2">
             {product.shortDescription}
           </p>
         </div>
 
-        {/* DYNAMIC PRODUCT TYPES */}
-        <div className="flex items-center gap-4 text-xs">
-          {/* DYNAMIC SIZES - Only renders if the product has sizes */}
-          {availableSizes.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className="text-gray-500">Size</span>
+        {/* Sizes & Colors - Middle */}
+        {(availableSizes.length > 0 || availableColors.length > 0) && (
+          <div className="flex items-center justify-between gap-4 text-xs">
+            {/* Sizes */}
+            {availableSizes.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Size</span>
 
-              <select
-                name="size"
-                id="size"
-                value={productTypes.size}
-                className="ring ring-gray-300 px-2 py-1 rounded-md cursor-pointer"
-                onChange={(e) =>
-                  handleProductTypes({ type: "size", value: e.target.value })
-                }
-              >
-                {availableSizes.map((size) => (
-                  <option key={size} value={size}>
-                    {size.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* DYNAMIC COLORS - Only renders if the product has colors */}
-          {availableColors.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className="text-gray-500">Colors</span>
-
-              <div className="flex items-center gap-1">
-                {availableColors.map((color) => {
-                  const colorIdx = getVariantIndex(productTypes.size, color);
-                  const colorStock = stocks[colorIdx] ?? 0;
-                  const isColorOutOfStock = colorStock <= 0;
-
-                  return (
-                    <button
-                      type="button"
-                      key={color}
-                      onClick={() =>
-                        handleProductTypes({ type: "color", value: color })
-                      }
-                      title={`${color.toUpperCase()} (${colorStock} in stock)`}
-                      className={`relative border-2 ${
-                        productTypes.color === color
-                          ? "border-gray-500"
-                          : "border-gray-300"
-                      } rounded-full p-[1.2px] cursor-pointer`}
-                    >
-                      <div
-                        className={`w-6 h-6 rounded-full ${
-                          isColorOutOfStock ? "opacity-30" : "opacity-100"
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                      {isColorOutOfStock && (
-                        <span className="absolute inset-0 flex items-center justify-center">
-                          <span className="w-full h-[1.5px] bg-red-500 rotate-45 transform" />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                <select
+                  name="size"
+                  id={`size-${product.id}`}
+                  value={productTypes.size}
+                  className="ring ring-gray-300 px-2 py-1 rounded-md cursor-pointer"
+                  onChange={(e) =>
+                    handleProductTypes({
+                      type: "size",
+                      value: e.target.value,
+                    })
+                  }
+                >
+                  {availableSizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+
+            {/* Colors */}
+            {availableColors.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Colors</span>
+
+                <div className="flex items-center gap-1">
+                  {availableColors.map((color) => {
+                    const colorIdx = getVariantIndex(
+                      productTypes.size,
+                      color
+                    );
+
+                    const colorStock = stocks[colorIdx] ?? 0;
+                    const isColorOutOfStock = colorStock <= 0;
+
+                    return (
+                      <button
+                        type="button"
+                        key={color}
+                        onClick={() =>
+                          handleProductTypes({
+                            type: "color",
+                            value: color,
+                          })
+                        }
+                        title={`${color.toUpperCase()} (${colorStock} in stock)`}
+                        className={`relative border-2 ${productTypes.color === color
+                            ? "border-gray-500"
+                            : "border-gray-300"
+                          } rounded-full p-[1.2px] cursor-pointer`}
+                      >
+                        <div
+                          className={`w-6 h-6 rounded-full ${isColorOutOfStock
+                              ? "opacity-30"
+                              : "opacity-100"
+                            }`}
+                          style={{ backgroundColor: color }}
+                        />
+
+                        {isColorOutOfStock && (
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="w-full h-[1.5px] bg-red-500 rotate-45 transform" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Stock Label */}
         <div className="text-xs">
@@ -194,16 +218,17 @@ const ProductCard = ({ product }: { product: ProductType }) => {
           <p className="font-medium text-base">
             TK.{currentPrice.toFixed(2)}
           </p>
+
           <button
             disabled={isSelectedVariantOutOfStock}
-            className={`flex gap-2 items-center ring-1 ring-gray-200 shadow-lg rounded-md px-2 py-1 text-sm transition-all duration-300 ${
-              isSelectedVariantOutOfStock
+            className={`flex gap-2 items-center ring-1 ring-gray-200 shadow-lg rounded-md px-2 py-1 text-sm transition-all duration-300 ${isSelectedVariantOutOfStock
                 ? "bg-gray-200 text-gray-400 cursor-not-allowed ring-0 shadow-none"
                 : "cursor-pointer hover:text-white hover:bg-black"
-            }`}
+              }`}
           >
             <LucideShoppingCart className="w-5 h-5" />
-            {isSelectedVariantOutOfStock ? "Out of Stock" : "Add To Cart"}
+
+            {isSelectedVariantOutOfStock ? "Sold Out" : "Add To Cart"}
           </button>
         </div>
       </div>
@@ -216,32 +241,32 @@ export default ProductCard;
 
 
 // index 0 color always pairs with index 0 size, index 1 color pairs with index 1 size
-  //  const handleProductTypes = ({
-  //   type,
-  //   value,
-  // }: {
-  //   type: "size" | "color";
-  //   value: string;
-  // }) => {
-  //   if (type === "color") {
-  //     // Find the position/index of the selected color
-  //     const colorIdx = product.colors.indexOf(value);
+//  const handleProductTypes = ({
+//   type,
+//   value,
+// }: {
+//   type: "size" | "color";
+//   value: string;
+// }) => {
+//   if (type === "color") {
+//     // Find the position/index of the selected color
+//     const colorIdx = product.colors.indexOf(value);
 
-  //     // Get the size at the exact same position (fall back to first size or empty string)
-  //     const matchingSize = product.sizes[colorIdx] ?? product.sizes[0] ?? "";
+//     // Get the size at the exact same position (fall back to first size or empty string)
+//     const matchingSize = product.sizes[colorIdx] ?? product.sizes[0] ?? "";
 
-  //     setProductTypes({
-  //       color: value,
-  //       size: matchingSize,
-  //     });
-  //   } else {
-  //     // If size changes directly, update size and optionally pair it with the color at the same index
-  //     const sizeIdx = product.sizes.indexOf(value);
-  //     const matchingColor = product.colors[sizeIdx] ?? product.colors[0] ?? "";
+//     setProductTypes({
+//       color: value,
+//       size: matchingSize,
+//     });
+//   } else {
+//     // If size changes directly, update size and optionally pair it with the color at the same index
+//     const sizeIdx = product.sizes.indexOf(value);
+//     const matchingColor = product.colors[sizeIdx] ?? product.colors[0] ?? "";
 
-  //     setProductTypes({
-  //       size: value,
-  //       color: matchingColor,
-  //     });
-  //   }
-  // };
+//     setProductTypes({
+//       size: value,
+//       color: matchingColor,
+//     });
+//   }
+// };

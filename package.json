@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-      "start": "concurrently \"npm run dev --prefix api-gateway\" \"npm run dev --prefix services/user-service\" \"npm run dev --prefix services/product-service\" \"npm run dev --prefix services/cart-service\" \"npm run dev --prefix services/order-service\"",
+    "start": "concurrently \"npm run dev --prefix api-gateway\" \"npm run dev --prefix services/user-service\" \"npm run dev --prefix services/product-service\" \"npm run dev --prefix services/cart-service\" \"npm run dev --prefix services/order-service\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -20,5 +20,10 @@
   "homepage": "https://github.com/Glitch-CoD3/E-commerce-web-app#readme",
   "devDependencies": {
     "concurrently": "^10.0.3"
+  },
+  "dependencies": {
+    "express-rate-limit": "^8.7.0",
+    "ioredis": "^6.0.0",
+    "rate-limit-redis": "^6.0.1"
   }
 }
