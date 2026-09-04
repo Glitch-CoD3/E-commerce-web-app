@@ -138,7 +138,7 @@ function StatusMetric({ stat }: { stat: MetricProps }) {
   const s = SEMANTIC_STYLES[stat.semantic];
   return (
     <div className="flex items-center gap-3 rounded-lg border border-[#1E2330] bg-[#12151B] px-4 py-3.5 transition-colors hover:border-[#2A3040]">
-      <span className={`h-8 w-[3px] rounded-full ${s.bar}`} aria-hidden />
+      <span className={`h-8 w-0.75 rounded-full ${s.bar}`} aria-hidden />
       <div className="min-w-0">
         <p className="truncate text-[12px] text-slate-400">{stat.title}</p>
         <p className="text-xl font-semibold tabular-nums text-slate-50">{stat.value}</p>
