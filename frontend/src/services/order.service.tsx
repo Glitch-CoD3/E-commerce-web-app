@@ -135,6 +135,12 @@ export const getCustomerAnalytics = async () => {
 };
 
 
+// 16. Get all paid Customer 
+export const getAllPaidCustomers = async () => {
+  const response = await AxiosInstance.get("/order/admin/analytics/customer-metrics/paid-customers");
+  return response.data;
+};
+
 // ==========================================
 // SHIPPING ADDRESS API CALLS
 // ==========================================
