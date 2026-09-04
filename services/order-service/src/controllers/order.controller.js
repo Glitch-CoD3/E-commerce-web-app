@@ -829,7 +829,7 @@ const getOrderByOrderId = async (req, res) => {
         //---------------------------------------------------
         // Get Order
         //---------------------------------------------------
-        const [order_details] = await connection.query(
+        const [order_details] = await DB.promise().query(
             `
             SELECT *
             FROM orders
@@ -849,7 +849,7 @@ const getOrderByOrderId = async (req, res) => {
         //---------------------------------------------------
         // Get Order Items
         //---------------------------------------------------
-        const [itemsResult] = await connection.query(
+        const [itemsResult] = await DB.promise().query(
             `
             SELECT
                 id,
@@ -875,6 +875,22 @@ const getOrderByOrderId = async (req, res) => {
         }
 
         //---------------------------------------------------
+        // Get Shipping Address
+        //---------------------------------------------------
+        const [shippingResult] = await DB.promise().query(
+            `
+            SELECT
+                full_address,
+                state,
+                city,
+                zip_code
+            FROM order_shipping_addresses
+            WHERE order_id = ?
+            `,
+            [orderId]
+        );
+
+        //---------------------------------------------------
         // Response
         //---------------------------------------------------
         return res.status(200).json({
@@ -882,7 +898,8 @@ const getOrderByOrderId = async (req, res) => {
             message: "Order fetched successfully",
             order_result: {
                 order_details,
-                Order_items: itemsResult
+                Order_items: itemsResult,
+                shipping_address: shippingResult[0] || null
             }
         });
 
