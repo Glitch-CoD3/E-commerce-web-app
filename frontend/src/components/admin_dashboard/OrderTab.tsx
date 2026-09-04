@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getAllOrdersAdmin } from '../../services/order.service';
 import { formatRelativeTime } from '../../services/timeformate.js';
 import { getUserById } from '../../services/user.service';
@@ -29,11 +30,11 @@ type PaginationMeta = {
 };
 
 export default function OrderTab({
-  onSelectOrder,
   getStatusBadge,
   tableHeaderBg,
   borderRow,
-}: OrderTabProps) {
+}: Omit<OrderTabProps, 'onSelectOrder'>) {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState<number>(1);
@@ -119,6 +120,11 @@ export default function OrderTab({
     const nextPage = page + 1;
     setPage(nextPage);
     fetchOrdersAndUsers(nextPage, true);
+  };
+
+  // Handler to navigate to the order details page
+  const handleViewDetails = (orderId: string | number) => {
+    router.push(`/dashboard/orders/${orderId}`);
   };
 
   if (loading) {
@@ -273,8 +279,8 @@ export default function OrderTab({
 
                       <td className="px-4 py-4 whitespace-nowrap text-right">
                         <button
-                          onClick={() => onSelectOrder(order)}
-                          className="inline-flex items-center space-x-1 rounded-lg bg-indigo-600/90 px-3 py-1.5 text-xs font-semibold text-white shadow-sm ring-1 ring-inset ring-indigo-500/30 transition-all hover:bg-indigo-500 hover:shadow-indigo-500/20 active:scale-95"
+                          onClick={() => handleViewDetails(order.id)}
+                          className="inline-flex items-center space-x-1 rounded-lg bg-indigo-600/90 px-3 py-1.5 text-xs font-semibold text-white shadow-sm ring-1 ring-inset ring-indigo-500/30 transition-all hover:bg-indigo-500 hover:shadow-indigo-500/20 active:scale-95 cursor-pointer"
                         >
                           <span>View Details</span>
                           <svg className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -322,8 +328,8 @@ export default function OrderTab({
 
                   <div className="pt-2">
                     <button
-                      onClick={() => onSelectOrder(order)}
-                      className="w-full rounded-lg bg-indigo-600/90 py-2 text-center text-xs font-semibold text-white transition hover:bg-indigo-500"
+                      onClick={() => handleViewDetails(order.id)}
+                      className="w-full rounded-lg bg-indigo-600/90 py-2 text-center text-xs font-semibold text-white transition hover:bg-indigo-500 cursor-pointer"
                     >
                       View Details
                     </button>
@@ -335,13 +341,13 @@ export default function OrderTab({
         </div>
       </div>
 
-      {/* ================= SEE MORE BUTTON ================= */}
+      {/* SEE MORE BUTTON */}
       {hasMorePages && (
         <div className="flex flex-col items-center justify-center pt-2 pb-4">
           <button
             onClick={handleLoadMore}
             disabled={loadingMore}
-            className="px-5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-medium text-xs transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-medium text-xs transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {loadingMore ? (
               <>

@@ -66,9 +66,11 @@ export const cancelOrder = async (id: number | string, data?: any) => {
 // 7. Update Order Status
 export const updateOrderStatus = async (
   id: number | string,
-  data: { status: string }
+  status: string
 ) => {
-  const response = await AxiosInstance.patch(`/order/${id}/status`, data);
+  const response = await AxiosInstance.patch(`/order/admin/${id}/status`, {
+    status: status.toLowerCase(),
+  });
   return response.data;
 };
 
@@ -91,15 +93,10 @@ export const getOrderByOrderIdAdmin = async (id: number | string) => {
 };
 
 // 11. Update Payment Status (Admin)
-export const updatePaymentStatus = async (
-  id: number | string,
-  data: { payment_status: string }
-) => {
-  const response = await AxiosInstance.patch(
-    `/order/admin/${id}/update_payment_status`,
-    data
-  );
-  return response.data;
+export const updatePaymentStatus = async (id: string | number, paymentStatus: string) => {
+  return AxiosInstance.patch(`/order/admin/${id}/update_payment_status`, {
+    payment_status: paymentStatus.toLowerCase(),
+  });
 };
 
 // 12. Get Sales Trend Over Time
