@@ -79,8 +79,8 @@ export const getAdminDashboard = async (params?: { year?: number; month?: number
 };
 
 // 8. Admin Dashboard Data
-export const getAllOrdersAdmin = async () => {
-  const response = await AxiosInstance.get("/order/admin");
+export const getAllOrdersAdmin = async (page: number = 1) => {
+  const response = await AxiosInstance.get(`/order/admin?page=${page}`);
   return response.data;
 };
 
