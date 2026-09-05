@@ -92,10 +92,12 @@ const createOrder = async (req, res) => {
 
 
         //---------------------------------------------------
-        // 4. Create Order Items
+        // 4. Create Order Items using Variant Price
         //---------------------------------------------------
 
         const orderItems = [];
+        let lastVariantData = null; // Store last fetched variant info for the final response metadata
+        let lastVariantImageData = null;
 
         for (const cartItem of carts.data) {
 
@@ -110,18 +112,23 @@ const createOrder = async (req, res) => {
                 });
             }
 
-            //Verify product varient available or not
+            // Verify product variant available or not
             var varient = await getProductByVariantId(cartItem.product_variant_id, token);
-
             var varientImage = await getProductVarientImage(cartItem.product_variant_id, token);
+
+            lastVariantData = varient;
+            lastVariantImageData = varientImage;
+
+            // Use the variant price instead of base product price
+            const variantPrice = varient.product_varient.price;
 
             orderItems.push({
                 product_id: product.id,
                 product_variant_id: cartItem.product_variant_id,
                 product_name: product.product_name,
-                price: product.price,
+                price: variantPrice,
                 quantity: cartItem.quantity,
-                total_amount: product.price * cartItem.quantity
+                total_amount: variantPrice * cartItem.quantity
             });
         }
 
@@ -298,16 +305,17 @@ const createOrder = async (req, res) => {
                 paymentStatus: "UNPAID",
                 totalAmount: total,
                 varient: {
-                    color: varient.product_varient.colors,
-                    size: varient.product_varient.sizes,
-                    price: varient.product_varient.price,
-                    image: varientImage[0].image_url
+                    color: lastVariantData?.product_varient?.colors,
+                    size: lastVariantData?.product_varient?.sizes,
+                    price: lastVariantData?.product_varient?.price,
+                    image: lastVariantImageData?.[0]?.image_url
                 },
             }
         });
 
 
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error(error.response?.data || error.message);
 
         return res.status(500).json({
