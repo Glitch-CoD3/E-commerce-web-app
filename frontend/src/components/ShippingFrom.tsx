@@ -189,36 +189,55 @@ const ShippingForm = ({
   };
 
   // Form submission handler — zip pulled from local state, never from RHF/Zod
-  const handleShippingForm: SubmitHandler<ShippingFormInputs> = async (data) => {
-    // Manual guard since zip is no longer covered by the Zod schema
-    if (!zipCode.trim()) {
-      setZipError("Zip code is required.");
+ const handleShippingForm: SubmitHandler<ShippingFormInputs> = async (data) => {
+  if (!zipCode.trim()) {
+    setZipError("Zip code is required.");
+    return;
+  }
+  setZipError("");
+
+  try {
+    const payload = {
+      full_address: data.address || "",
+      state: data.state || "",
+      city: data.city || "",
+      zip_code: zipCode.trim(),
+    };
+
+    let targetAddressId: number | null | undefined = selectedAddressId || editingAddressId;
+
+    if (editingAddressId !== null && editingAddressId !== undefined) {
+      // 1. Updating an existing address
+      await updateShippingAddress(editingAddressId, payload);
+      targetAddressId = editingAddressId;
+    } else {
+      // 2. Creating a new address - capture response from service
+      const res = await createShippingAddress(payload);
+      
+      // Look for ID in various common API response structures:
+      // e.g., res.data.id, res.address.id, or res.id
+      targetAddressId = res?.data?.id || res?.address?.id || res?.id;
+    }
+
+    // Safety fallback: if no ID returned, grab the first address from saved addresses
+    if (!targetAddressId && savedAddresses.length > 0) {
+      targetAddressId = savedAddresses[0].id;
+    }
+
+    if (!targetAddressId) {
+      console.error("Could not resolve an address ID.");
       return;
     }
-    setZipError("");
 
-    try {
-      const payload = {
-        full_address: data.address || "",
-        state: data.state || "",
-        city: data.city || "",
-        zip_code: zipCode.trim(),
-      };
+    setShippingForm({ ...data, zip_code: zipCode.trim() } as unknown as ShippingFormInputs);
 
-      // console.log("Sending payload to backend:", payload); // Verify payload matches Postman before request
+    // Explicitly set BOTH step and addressId in the URL parameters
+    router.push(`/cart?step=3&addressId=${targetAddressId}`, { scroll: false });
 
-      if (editingAddressId !== null && editingAddressId !== undefined) {
-        await updateShippingAddress(editingAddressId, payload);
-      } else {
-        await createShippingAddress(payload);
-      }
-
-      setShippingForm({ ...data, zip_code: zipCode.trim() } as unknown as ShippingFormInputs);
-      router.push("/cart?step=3", { scroll: false });
-    } catch (err: any) {
-      console.error("Error saving address:", err);
-    }
-  };
+  } catch (err: any) {
+    console.error("Error saving address:", err);
+  }
+};
 
   return (
     <div className="flex flex-col gap-6">

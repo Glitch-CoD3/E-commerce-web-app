@@ -176,3 +176,21 @@ export type PaidCustomer = {
 
 
 
+
+
+export const paymentFormSchema_new = z.object({
+  paymentMethod: z.enum(["bkash", "bank_card"], {
+    error: "Please select a payment method",
+  }),
+  senderNumber: z
+    .string()
+    .min(10, "Account, card, or mobile number must be at least 10 digits")
+    .max(19, "Invalid account or card number length"),
+  transactionId: z
+    .string()
+    .min(6, "Transaction ID or Reference ID must be at least 6 characters")
+    .toUpperCase(),
+  notes: z.string().optional(),
+});
+
+export type PaymentFormInputs_new = z.infer<typeof paymentFormSchema_new>;

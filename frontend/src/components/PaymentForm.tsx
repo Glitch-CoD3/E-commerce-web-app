@@ -1,151 +1,183 @@
-import { PaymentFormInputs, paymentFormSchema } from "../type";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { ShoppingCart } from "lucide-react";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { SubmitHandler, useForm } from "react-hook-form";
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createOrder, getShippingAddressByAddressId, getOrderByQueryId } from "../services/order.service";
 
 const PaymentForm = () => {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<PaymentFormInputs>({
-    resolver: zodResolver(paymentFormSchema),
-  });
+  const searchParams = useSearchParams();
+  const addressId = searchParams.get("addressId");
 
-  const router = useRouter();
+  const [addressDetails, setAddressDetails] = useState<any>(null);
+  const [loadingAddress, setLoadingAddress] = useState<boolean>(false);
+  const [addressError, setAddressError] = useState<string>("");
 
-  const handlePaymentForm: SubmitHandler<PaymentFormInputs> = (data) => {
-    // Handle payment submission here
+  const [senderNumber, setSenderNumber] = useState("");
+  const [transactionId, setTransactionId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("bkash");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createOrderResponse, setCreateOrderResponse] = useState<any>(null);
+
+  // 1. Fetch Shipping Address on load
+  useEffect(() => {
+    if (!addressId) return;
+
+    const fetchAddress = async () => {
+      try {
+        setLoadingAddress(true);
+        setAddressError("");
+        const res = await getShippingAddressByAddressId(Number(addressId));
+
+        if (res?.success && res?.address) {
+          setAddressDetails(res.address);
+        } else if (res?.data) {
+          setAddressDetails(res.data);
+        } else {
+          setAddressDetails(res);
+        }
+      } catch (err: any) {
+        console.error("Failed to load shipping address:", err);
+        setAddressError("Could not load address details.");
+      } finally {
+        setLoadingAddress(false);
+      }
+    };
+
+    fetchAddress();
+  }, [addressId]);
+
+  // 2. Handle Order Creation
+  const handleOrderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!addressId || !addressDetails) {
+      alert("No shipping address selected. Please go back to step 2.");
+      return;
+    }
+
+    if (!senderNumber || !transactionId) {
+      alert("Please provide both sender number and transaction ID.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const payload = {
+      address_id: Number(addressId),
+      full_address: addressDetails.full_address || "",
+      state: addressDetails.state || "",
+      city: addressDetails.city || "",
+      zip: addressDetails.zip_code || "",
+      payment_method: paymentMethod,
+      sender_number: senderNumber,
+      transaction_id: transactionId,
+    };
+
+    try {
+      const res = await createOrder(payload);
+      console.log("Order Creation Response:", res);
+
+      // Extract order ID safely across multiple response structures
+      const fetchedOrderId = res?.data?.orderId;
+
+      if ((res?.success || fetchedOrderId) && fetchedOrderId) {
+        const createdOrder = await getOrderByQueryId(fetchedOrderId);
+        setCreateOrderResponse(createdOrder);
+        console.log("Fetched Created Order Details:", createdOrder);
+      } else {
+        alert(res?.message || "Failed to create order. Please try again.");
+      }
+    } catch (error: any) {
+      console.error("Payment Submission Error:", error);
+      alert(
+        error?.response?.data?.message || "An error occurred while creating the order."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  console.log("address", addressDetails)
+
   return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={handleSubmit(handlePaymentForm)}
-    >
-      {/* Name on Card */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="cardHolder"
-          className="text-xs text-gray-500 font-medium"
-        >
-          Name on Card
-        </label>
-        <input
-          id="cardHolder"
-          type="text"
-          placeholder="John Doe"
-          className="border-b border-gray-200 py-2 outline-none text-sm"
-          {...register("cardHolder")}
-        />
-        {errors.cardHolder && (
-          <p className="text-xs text-red-500">
-            {errors.cardHolder.message}
-          </p>
+    <div className="space-y-4">
+      {/* Display Shipping Address Preview */}
+      <div className="p-3 bg-gray-50 border rounded-lg text-xs space-y-1">
+        <p className="font-semibold text-gray-700">Shipping Address Details:</p>
+
+        {!addressId && (
+          <p className="text-red-500">No address selected. Please go back to Step 2.</p>
+        )}
+
+        {loadingAddress && <p className="text-gray-500">Loading address details...</p>}
+
+        {addressError && <p className="text-red-500">{addressError}</p>}
+
+        {addressDetails && (
+          <div>
+            <p className="font-medium text-gray-800">{addressDetails.full_address}</p>
+            <p className="text-gray-600">
+              {addressDetails.city}, {addressDetails.state} - {addressDetails.zip_code}
+            </p>
+            {addressDetails.phone_number && (
+              <p className="text-gray-500">Phone: {addressDetails.phone_number}</p>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Card Number */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="cardNumber"
-          className="text-xs text-gray-500 font-medium"
-        >
-          Card Number
-        </label>
+      {/* Payment Form */}
+      <form onSubmit={handleOrderSubmit} className="space-y-4">
+        <div className="flex gap-4 text-xs font-medium">
+          {["bkash", "nagad", "rocket"].map((method) => (
+            <label key={method} className="flex items-center gap-1 cursor-pointer capitalize">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value={method}
+                checked={paymentMethod === method}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              />
+              {method}
+            </label>
+          ))}
+        </div>
+
         <input
-          id="cardNumber"
           type="text"
-          placeholder="123456789123"
-          className="border-b border-gray-200 py-2 outline-none text-sm"
-          {...register("cardNumber")}
+          placeholder="Sender Number (017...)"
+          value={senderNumber}
+          onChange={(e) => setSenderNumber(e.target.value)}
+          className="border p-2 rounded w-full text-sm"
+          required
         />
-        {errors.cardNumber && (
-          <p className="text-xs text-red-500">
-            {errors.cardNumber.message}
-          </p>
-        )}
-      </div>
 
-      {/* Expiration Date */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="expirationDate"
-          className="text-xs text-gray-500 font-medium"
-        >
-          Expiration Date
-        </label>
         <input
-          id="expirationDate"
           type="text"
-          placeholder="01/32"
-          className="border-b border-gray-200 py-2 outline-none text-sm"
-          {...register("expirationDate")}
+          placeholder="Transaction ID (e.g. 9J78A2KL)"
+          value={transactionId}
+          onChange={(e) => setTransactionId(e.target.value)}
+          className="border p-2 rounded w-full text-sm"
+          required
         />
-        {errors.expirationDate && (
-          <p className="text-xs text-red-500">
-            {errors.expirationDate.message}
-          </p>
-        )}
-      </div>
 
-      {/* CVV */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="cvv"
-          className="text-xs text-gray-500 font-medium"
+        <button
+          type="submit"
+          disabled={isSubmitting || !addressId || !addressDetails}
+          className="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-400 text-white p-2 rounded-lg text-sm font-medium transition"
         >
-          CVV
-        </label>
-        <input
-          id="cvv"
-          type="text"
-          placeholder="123"
-          className="border-b border-gray-200 py-2 outline-none text-sm"
-          {...register("cvv")}
-        />
-        {errors.cvv && (
-          <p className="text-xs text-red-500">
-            {errors.cvv.message}
-          </p>
-        )}
-      </div>
+          {isSubmitting ? "Processing Order..." : "Confirm Order"}
+        </button>
+      </form>
 
-      {/* Payment Methods */}
-      <div className="flex items-center gap-2 mt-4">
-        <Image
-          src="/klarna.png"
-          alt="Klarna"
-          width={50}
-          height={25}
-          className="rounded-md"
-        />
-        <Image
-          src="/cards.png"
-          alt="Cards"
-          width={50}
-          height={25}
-          className="rounded-md"
-        />
-        <Image
-          src="/stripe.png"
-          alt="Stripe"
-          width={50}
-          height={25}
-          className="rounded-md"
-        />
-      </div>
-
-      <button
-        type="submit"
-        className="w-full bg-gray-800 hover:bg-gray-900 transition-all duration-300 text-white p-2 rounded-lg cursor-pointer flex items-center justify-center gap-2"
-      >
-        Checkout
-        <ShoppingCart className="w-3 h-3" />
-      </button>
-    </form>
+      {/* Optional: Render Success Confirmation Card when Order Created */}
+      {createOrderResponse && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs space-y-1 text-green-800">
+          <p className="font-semibold">Order Placed Successfully!</p>
+          <p>Order ID: #{createOrderResponse?.data?.id || createOrderResponse?.order_result?.order_details?.id}</p>
+        </div>
+      )}
+    </div>
   );
 };
 
