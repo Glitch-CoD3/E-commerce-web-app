@@ -133,6 +133,8 @@ const CartPage = () => {
     fetchCart();
   }, [fetchCart]);
 
+  
+
   // Update Cart Quantity
   const handleUpdateQuantity = async (
     id: number | string,

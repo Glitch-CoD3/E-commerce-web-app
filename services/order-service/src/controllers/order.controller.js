@@ -814,8 +814,7 @@ const getOrdersByUserId = async (req, res) => {
 
 const getOrderByOrderId = async (req, res) => {
     try {
-        // Accept orderId from either params (/orders/details/:orderId) OR query (/orders/details?orderId=4)
-        const orderId = req.params.orderId || req.query.orderId;
+        const { orderId } = req.params;
 
         //---------------------------------------------------
         // Validation
@@ -838,6 +837,7 @@ const getOrderByOrderId = async (req, res) => {
             `,
             [orderId]
         );
+
 
         if (order_details.length === 0) {
             return res.status(404).json({
@@ -866,6 +866,14 @@ const getOrderByOrderId = async (req, res) => {
             [orderId]
         );
 
+
+        if (itemsResult.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Items not found!"
+            });
+        }
+
         //---------------------------------------------------
         // Get Shipping Address
         //---------------------------------------------------
@@ -889,7 +897,7 @@ const getOrderByOrderId = async (req, res) => {
             success: true,
             message: "Order fetched successfully",
             order_result: {
-                order_details: order_details[0], // Returned single object instead of array
+                order_details,
                 Order_items: itemsResult,
                 shipping_address: shippingResult[0] || null
             }
