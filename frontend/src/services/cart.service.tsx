@@ -36,6 +36,7 @@ export const addToCart = async (
 // 2. Get All Carts
 export const getAllCarts = async (): Promise<CartType[]> => {
   const response = await AxiosInstance.get("/cart");
+  // console.log("Get All Carts Response:", response.data);
   return response.data;
 };
 
@@ -53,7 +54,7 @@ export const updateCartQuantity = async (
   data: { quantity: number }
 ): Promise<CartType> => {
   const response = await AxiosInstance.patch(
-    `/cart`,
+    `/cart/${id}`,
     data
   );
   return response.data;

@@ -1,10 +1,11 @@
 "use client";
 
 import { ProductType } from "../type";
-import { LucideShoppingCart } from "lucide-react";
+import { LucideShoppingCart, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { addToCart, AddToCartInput } from "../services/cart.service";
 
 const ProductCard = ({ product }: { product: ProductType }) => {
   // Ensure sizes and colors are always valid arrays
@@ -16,37 +17,60 @@ const ProductCard = ({ product }: { product: ProductType }) => {
     color: availableColors[0] ?? "",
   });
 
-  // Keep compatibility with API variant fields
+  const [isAdding, setIsAdding] = useState(false);
+
+  // Extend interface for JSON string fields from SQL
   const variantProduct = product as ProductType & {
     variant_prices?: number[] | string;
     variant_stocks?: number[] | string;
+    variant_ids?: (number | string)[] | string;
   };
 
-  // Parse variant JSON strings safely
-  const prices: number[] = useMemo(() => {
+  // Safe parsing helper
+  const parseJsonArray = <T,>(data: unknown): T[] => {
     try {
-      return typeof variantProduct.variant_prices === "string"
-        ? JSON.parse(variantProduct.variant_prices).map(Number)
-        : variantProduct.variant_prices || [];
+      if (typeof data === "string") return JSON.parse(data);
+      if (Array.isArray(data)) return data;
+      return [];
     } catch {
       return [];
     }
-  }, [variantProduct.variant_prices]);
+  };
 
-  const stocks: number[] = useMemo(() => {
-    try {
-      return typeof variantProduct.variant_stocks === "string"
-        ? JSON.parse(variantProduct.variant_stocks).map(Number)
-        : variantProduct.variant_stocks || [];
-    } catch {
-      return [];
+  const variantIds = useMemo(
+    () => parseJsonArray<number | string>(variantProduct.variant_ids),
+    [variantProduct.variant_ids]
+  );
+  
+  const prices = useMemo(
+    () => parseJsonArray<number>(variantProduct.variant_prices).map(Number),
+    [variantProduct.variant_prices]
+  );
+  
+  const stocks = useMemo(
+    () => parseJsonArray<number>(variantProduct.variant_stocks).map(Number),
+    [variantProduct.variant_stocks]
+  );
+
+  // Calculate variant index matching BOTH size and color
+  const getVariantIndex = (selectedSize: string, selectedColor: string) => {
+    // If variants are 1D (only color or only size)
+    if (availableSizes.length === 0 || availableColors.length === 0) {
+      const colorIdx = availableColors.indexOf(selectedColor);
+      const sizeIdx = availableSizes.indexOf(selectedSize);
+      return colorIdx !== -1 ? colorIdx : sizeIdx !== -1 ? sizeIdx : 0;
     }
-  }, [variantProduct.variant_stocks]);
 
-  // Index mapped directly to color position
-  const getVariantIndex = (_size: string, color: string) => {
-    const colorIndex = availableColors.indexOf(color);
-    return colorIndex !== -1 ? colorIndex : 0;
+    // Grid formula for 2D variants (size x color matrix)
+    const sizeIndex = availableSizes.indexOf(selectedSize);
+    const colorIndex = availableColors.indexOf(selectedColor);
+
+    if (sizeIndex === -1 || colorIndex === -1) return 0;
+
+    const calculatedIndex = sizeIndex * availableColors.length + colorIndex;
+    
+    // Bounds check
+    return calculatedIndex < variantIds.length ? calculatedIndex : colorIndex;
   };
 
   const currentVariantIndex = getVariantIndex(
@@ -54,6 +78,8 @@ const ProductCard = ({ product }: { product: ProductType }) => {
     productTypes.color
   );
 
+  // Active variant properties
+  const currentVariantId = variantIds[currentVariantIndex];
   const currentPrice =
     prices[currentVariantIndex] ?? Number(product.price || 0);
   const currentStock = stocks[currentVariantIndex] ?? 0;
@@ -70,6 +96,26 @@ const ProductCard = ({ product }: { product: ProductType }) => {
       ...prev,
       [type]: value,
     }));
+  };
+
+  const handleAddToCart = async () => {
+    if (isSelectedVariantOutOfStock || isAdding) return;
+
+    try {
+      setIsAdding(true);
+
+      const cartInput: AddToCartInput = {
+        product_id: product.id,
+        product_variant_id: currentVariantId ?? undefined,
+        quantity: 1,
+      };
+
+      await addToCart(cartInput);
+    } catch (error) {
+      console.error("Failed to add product to cart:", error);
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   return (
@@ -118,7 +164,7 @@ const ProductCard = ({ product }: { product: ProductType }) => {
           </p>
         </div>
 
-        {/* Sizes & Colors - Middle */}
+        {/* Sizes & Colors */}
         {(availableSizes.length > 0 || availableColors.length > 0) && (
           <div className="flex items-center justify-between gap-4 text-xs">
             {/* Sizes */}
@@ -173,16 +219,18 @@ const ProductCard = ({ product }: { product: ProductType }) => {
                           })
                         }
                         title={`${color.toUpperCase()} (${colorStock} in stock)`}
-                        className={`relative border-2 ${productTypes.color === color
+                        className={`relative border-2 ${
+                          productTypes.color === color
                             ? "border-gray-500"
                             : "border-gray-300"
-                          } rounded-full p-[1.2px] cursor-pointer`}
+                        } rounded-full p-[1.2px] cursor-pointer`}
                       >
                         <div
-                          className={`w-6 h-6 rounded-full ${isColorOutOfStock
+                          className={`w-6 h-6 rounded-full ${
+                            isColorOutOfStock
                               ? "opacity-30"
                               : "opacity-100"
-                            }`}
+                          }`}
                           style={{ backgroundColor: color }}
                         />
 
@@ -220,15 +268,25 @@ const ProductCard = ({ product }: { product: ProductType }) => {
           </p>
 
           <button
-            disabled={isSelectedVariantOutOfStock}
-            className={`flex gap-2 items-center ring-1 ring-gray-200 shadow-lg rounded-md px-2 py-1 text-sm transition-all duration-300 ${isSelectedVariantOutOfStock
+            onClick={handleAddToCart}
+            disabled={isSelectedVariantOutOfStock || isAdding}
+            className={`flex gap-2 items-center ring-1 ring-gray-200 shadow-lg rounded-md px-2 py-1 text-sm transition-all duration-300 ${
+              isSelectedVariantOutOfStock || isAdding
                 ? "bg-gray-200 text-gray-400 cursor-not-allowed ring-0 shadow-none"
                 : "cursor-pointer hover:text-white hover:bg-black"
-              }`}
+            }`}
           >
-            <LucideShoppingCart className="w-5 h-5" />
+            {isAdding ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <LucideShoppingCart className="w-5 h-5" />
+            )}
 
-            {isSelectedVariantOutOfStock ? "Sold Out" : "Add To Cart"}
+            {isSelectedVariantOutOfStock
+              ? "Sold Out"
+              : isAdding
+              ? "Adding..."
+              : "Add To Cart"}
           </button>
         </div>
       </div>
@@ -237,36 +295,3 @@ const ProductCard = ({ product }: { product: ProductType }) => {
 };
 
 export default ProductCard;
-
-
-
-// index 0 color always pairs with index 0 size, index 1 color pairs with index 1 size
-//  const handleProductTypes = ({
-//   type,
-//   value,
-// }: {
-//   type: "size" | "color";
-//   value: string;
-// }) => {
-//   if (type === "color") {
-//     // Find the position/index of the selected color
-//     const colorIdx = product.colors.indexOf(value);
-
-//     // Get the size at the exact same position (fall back to first size or empty string)
-//     const matchingSize = product.sizes[colorIdx] ?? product.sizes[0] ?? "";
-
-//     setProductTypes({
-//       color: value,
-//       size: matchingSize,
-//     });
-//   } else {
-//     // If size changes directly, update size and optionally pair it with the color at the same index
-//     const sizeIdx = product.sizes.indexOf(value);
-//     const matchingColor = product.colors[sizeIdx] ?? product.colors[0] ?? "";
-
-//     setProductTypes({
-//       size: value,
-//       color: matchingColor,
-//     });
-//   }
-// };

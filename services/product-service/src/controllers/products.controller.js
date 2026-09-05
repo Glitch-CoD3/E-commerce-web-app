@@ -200,7 +200,7 @@ const getAllProducts = async (req, res) => {
         // Fetch products with aggregated sizes, colors, and images
         const [rows] = await DB.promise().query(
             `
-           SELECT
+          SELECT
     p.id,
     p.product_name AS name,
     p.short_description AS shortDescription,
@@ -222,20 +222,30 @@ const getAllProducts = async (req, res) => {
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS total_variants,
 
+    /* 1. Variant IDs (Ordered DESC) */
     (
-        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.sizes, '"') ORDER BY pv.sizes DESC), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(pv.id ORDER BY pv.id DESC), ']')
+        FROM product_variants pv 
+        WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
+    ) AS variant_ids,
+
+    /* 2. Sizes (Ordered DESC by variant ID to preserve index mapping) */
+    (
+        SELECT CONCAT('[', GROUP_CONCAT(CONCAT('"', pv.sizes, '"') ORDER BY pv.id DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS sizes,
 
+    /* 3. Colors (Ordered DESC by variant ID to preserve index mapping) */
     (
-        SELECT CONCAT('[', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '"') ORDER BY pv.colors ASC), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(CONCAT('"', pv.colors, '"') ORDER BY pv.id DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS colors,
 
+    /* 4. Images Object (Ordered DESC by variant ID) */
     (
-        SELECT CONCAT('{', GROUP_CONCAT(DISTINCT CONCAT('"', pv.colors, '":"', iv.image_url, '"') ORDER BY pv.colors DESC), '}')
+        SELECT CONCAT('{', GROUP_CONCAT(CONCAT('"', pv.colors, '":"', iv.image_url, '"') ORDER BY pv.id DESC), '}')
         FROM product_variants pv
         JOIN variant_images iv ON iv.product_variant_id = pv.id
         WHERE pv.product_id = p.id 
@@ -243,14 +253,16 @@ const getAllProducts = async (req, res) => {
           AND iv.deleted_at IS NULL
     ) AS images,
 
+    /* 5. Variant Stocks (Ordered DESC) */
     (
-        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity ORDER BY pv.stock_quantity ASC), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(pv.stock_quantity ORDER BY pv.id DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS variant_stocks,
 
+    /* 6. Variant Prices (Ordered DESC) */
     (
-        SELECT CONCAT('[', GROUP_CONCAT(pv.price ORDER BY pv.price DESC), ']')
+        SELECT CONCAT('[', GROUP_CONCAT(pv.price ORDER BY pv.id DESC), ']')
         FROM product_variants pv 
         WHERE pv.product_id = p.id AND pv.deleted_at IS NULL
     ) AS variant_prices
