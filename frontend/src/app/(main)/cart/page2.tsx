@@ -3,15 +3,9 @@
 import PaymentForm from "@/src/components/PaymentForm";
 import ShippingForm from "@/src/components/ShippingFrom";
 import { ShippingFormInputs } from "@/src/type";
-import {
-  Loader2,
-  Trash2,
-  Minus,
-  Plus,
-  ArrowRight,
-} from "lucide-react";
+import { ArrowRight, Trash2, Loader2, Minus, Plus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { toast } from "react-toastify";
 import { handleApiError } from "../../../services/handleApiError";
@@ -72,7 +66,6 @@ const CartPage = () => {
 
   // Rate Limiting Cooldown State
   const [cooldown, setCooldown] = useState<number>(0);
-  const isFetchingCart = useRef(false);
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -86,101 +79,61 @@ const CartPage = () => {
   }, [cooldown]);
 
   // Fetch Cart Items
- const fetchCart = useCallback(async () => {
-  if (isFetchingCart.current) return;
+  const fetchCart = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res: any = await getAllCarts();
+      const rawItems: CartType[] = Array.isArray(res) ? res : res?.data || [];
 
-  try {
-    isFetchingCart.current = true;
-    setLoading(true);
+      const populatedItems = await Promise.all(
+        rawItems.map(async (item) => {
+          let productData = null;
+          let variantDetails = null;
+          let imageUrl: string | null = null;
 
-    const res: any = await getAllCarts();
-    const rawItems: CartType[] = Array.isArray(res)
-      ? res
-      : res?.data || [];
-
-    const populatedItems = await Promise.all(
-      rawItems.map(async (item) => {
-        let productData = null;
-        let variantDetails = null;
-        let imageUrl: string | null = null;
-
-        if (item.product_id) {
-          try {
-            const productRes: any =
-              await getProductById(item.product_id);
-
-            productData = productRes?.product || null;
-          } catch (err) {
-            console.error(
-              `Failed to load product ID: ${item.product_id}`,
-              err
-            );
-          }
-        }
-
-        if (item.product_variant_id) {
-          try {
-            const variantRes: any =
-              await getProductByVarientId(
-                Number(item.product_variant_id)
-              );
-
-            variantDetails =
-              variantRes?.product_varient || null;
-
-            const imageRes: any =
-              await getVariantImageById(
-                Number(item.product_variant_id)
-              );
-
-            if (
-              imageRes?.data &&
-              Array.isArray(imageRes.data) &&
-              imageRes.data.length > 0
-            ) {
-              imageUrl =
-                imageRes.data[0]?.image_url || null;
+          if (item.product_id) {
+            try {
+              const productRes: any = await getProductById(item.product_id);
+              productData = productRes?.product || null;
+            } catch (err) {
+              console.error(`Failed to load product ID: ${item.product_id}`, err);
             }
-          } catch (err) {
-            console.error(
-              `Failed to load variant details for ID: ${item.product_variant_id}`,
-              err
-            );
           }
-        }
 
-        if (
-          !imageUrl &&
-          productData?.images &&
-          variantDetails?.colors
-        ) {
-          imageUrl =
-            productData.images[variantDetails.colors] || null;
-        }
+          if (item.product_variant_id) {
+            try {
+              const variantRes: any = await getProductByVarientId(
+                Number(item.product_variant_id)
+              );
+              variantDetails = variantRes?.product_varient || null;
 
-        return {
-          ...item,
-          productData,
-          variantDetails,
-          imageUrl,
-        };
-      })
-    );
+              const imageRes: any = await getVariantImageById(
+                Number(item.product_variant_id)
+              );
+              if (imageRes?.data && Array.isArray(imageRes.data) && imageRes.data.length > 0) {
+                imageUrl = imageRes.data[0]?.image_url || null;
+              }
+            } catch (err) {
+              console.error(`Failed to load variant details for ID: ${item.product_variant_id}`, err);
+            }
+          }
 
-    setCartItems(populatedItems);
+          if (!imageUrl && productData?.images && variantDetails?.colors) {
+            imageUrl = productData.images[variantDetails.colors] || null;
+          }
 
-  } catch (error: any) {
-    handleApiError(error, {
-      onRateLimit: (sec) => setCooldown(sec),
-    });
+          return { ...item, productData, variantDetails, imageUrl };
+        })
+      );
 
-    setCartItems([]);
-
-  } finally {
-    isFetchingCart.current = false;
-    setLoading(false);
-  }
-}, []);
+      setCartItems(populatedItems);
+    } catch (error: any) {
+      handleApiError(error, { onRateLimit: (sec) => setCooldown(sec) });
+      setCartItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchCart();

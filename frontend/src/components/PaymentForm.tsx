@@ -1,8 +1,12 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { createOrder, getShippingAddressByAddressId, getOrderByQueryId } from "../services/order.service";
+import { useEffect, useRef, useState } from "react";
+import {
+  createOrder,
+  getShippingAddressByAddressId,
+  getOrderByQueryId,
+} from "../services/order.service";
 
 const PaymentForm = () => {
   const searchParams = useSearchParams();
@@ -18,86 +22,163 @@ const PaymentForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createOrderResponse, setCreateOrderResponse] = useState<any>(null);
 
-  // 1. Fetch Shipping Address on load
+  // Prevent duplicate requests
+  const addressRequestRef = useRef<number | null>(null);
+  const orderSubmittingRef = useRef(false);
+
+  // 1. Fetch Shipping Address
   useEffect(() => {
-    if (!addressId) return;
+    if (!addressId) {
+      setAddressDetails(null);
+      return;
+    }
+
+    const currentAddressId = Number(addressId);
+
+    if (!Number.isInteger(currentAddressId) || currentAddressId <= 0) {
+      setAddressError("Invalid shipping address.");
+      return;
+    }
+
+    // Prevent same address from being requested repeatedly
+    if (addressRequestRef.current === currentAddressId) {
+      return;
+    }
+
+    addressRequestRef.current = currentAddressId;
+
+    let cancelled = false;
 
     const fetchAddress = async () => {
       try {
         setLoadingAddress(true);
         setAddressError("");
+
         const res = await getShippingAddressByAddressId(Number(addressId));
+
 
         if (res?.success && res?.address) {
           setAddressDetails(res.address);
-        } else if (res?.data) {
-          setAddressDetails(res.data);
         } else {
-          setAddressDetails(res);
+          setAddressError("Could not load address details.");
+          setAddressDetails(null);
         }
       } catch (err: any) {
-        console.error("Failed to load shipping address:", err);
-        setAddressError("Could not load address details.");
+        setAddressError(
+          err?.response?.data?.message ||
+          "Could not load address details."
+        );
+        setAddressDetails(null);
       } finally {
-        setLoadingAddress(false);
+        if (!cancelled) {
+          setLoadingAddress(false);
+        }
       }
     };
 
     fetchAddress();
+
+    return () => {
+      cancelled = true;
+    };
   }, [addressId]);
 
   // 2. Handle Order Creation
-  const handleOrderSubmit = async (e: React.FormEvent) => {
+  const handleOrderSubmit = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
 
+    // Prevent double click / duplicate submission
+    if (orderSubmittingRef.current || isSubmitting) {
+      return;
+    }
+
     if (!addressId || !addressDetails) {
-      alert("No shipping address selected. Please go back to step 2.");
+      alert(
+        "No shipping address selected. Please go back to step 2."
+      );
       return;
     }
 
-    if (!senderNumber || !transactionId) {
-      alert("Please provide both sender number and transaction ID.");
+    const cleanSenderNumber = senderNumber.trim();
+    const cleanTransactionId = transactionId.trim();
+
+    if (!cleanSenderNumber || !cleanTransactionId) {
+      alert(
+        "Please provide both sender number and transaction ID."
+      );
       return;
     }
 
+    const parsedAddressId = Number(addressId);
+
+    if (
+      !Number.isInteger(parsedAddressId) ||
+      parsedAddressId <= 0
+    ) {
+      alert("Invalid shipping address.");
+      return;
+    }
+
+    // Lock immediately before API request
+    orderSubmittingRef.current = true;
     setIsSubmitting(true);
 
     const payload = {
-      address_id: Number(addressId),
+      address_id: parsedAddressId,
       full_address: addressDetails.full_address || "",
       state: addressDetails.state || "",
       city: addressDetails.city || "",
       zip: addressDetails.zip_code || "",
       payment_method: paymentMethod,
-      sender_number: senderNumber,
-      transaction_id: transactionId,
+      sender_number: cleanSenderNumber,
+      transaction_id: cleanTransactionId,
     };
 
     try {
       const res = await createOrder(payload);
-      console.log("Order Creation Response:", res);
 
-      // Extract order ID safely across multiple response structures
+      // Existing response structure
       const fetchedOrderId = res?.data?.orderId;
 
-      if ((res?.success || fetchedOrderId) && fetchedOrderId) {
-        const createdOrder = await getOrderByQueryId(fetchedOrderId);
-        setCreateOrderResponse(createdOrder);
-        console.log("Fetched Created Order Details:", createdOrder);
-      } else {
-        alert(res?.message || "Failed to create order. Please try again.");
+      if (!fetchedOrderId) {
+        alert(
+          res?.message ||
+          "Failed to create order. Please try again."
+        );
+        return;
       }
-    } catch (error: any) {
-      console.error("Payment Submission Error:", error);
-      alert(
-        error?.response?.data?.message || "An error occurred while creating the order."
+
+      // Fetch only after successful order creation
+      const createdOrder =
+        await getOrderByQueryId(fetchedOrderId);
+
+      setCreateOrderResponse(createdOrder);
+
+      console.log(
+        "Fetched Created Order Details:",
+        createdOrder.order_result.order_details
+
       );
+    } catch (error: any) {
+      console.error(
+        "Payment Submission Error:",
+        error
+      );
+
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "An error occurred while creating the order.";
+
+      alert(message);
     } finally {
       setIsSubmitting(false);
+      orderSubmittingRef.current = false;
     }
   };
 
-  console.log("address", addressDetails)
 
   return (
     <div className="space-y-4">
