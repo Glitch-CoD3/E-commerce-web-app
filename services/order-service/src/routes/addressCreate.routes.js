@@ -1,5 +1,5 @@
 import express from 'express';
-import { createShippingAddress, updateShippingAddress, getShippingAddress, getShippingAddressById } from '../controllers/shipping_addresses.js';
+import { createShippingAddress, updateShippingAddress, getShippingAddress, getShippingAddressById, deleteShippingAddress } from '../controllers/shipping_addresses.js';
 import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
@@ -18,14 +18,14 @@ router.post('/', createShippingAddress);
 
 
 /**
- * @GET /api/v1/shipping-addresses/:id
+ * @GET /api/v1/order/address/:id
  * @description Get a user's shipping address
  * @access Private
  */
 router.get('/user/:id', getShippingAddress);
 
 /**
- * @GET /api/v1/shipping-addresses/:id
+ * @GET /api/v1/order/address/:id
  * @description Get a specific shipping address
  * @access Private
  */
@@ -37,5 +37,12 @@ router.get('/:id', getShippingAddressById);
  * @access Private
  */
 router.patch('/:id', updateShippingAddress);
+
+/**
+ * @DELETE /api/v1/shipping-addresses/:id
+ * @description Delete a shipping address
+ * @access Private
+ */
+router.delete('/:id', deleteShippingAddress);
 
 export default router;

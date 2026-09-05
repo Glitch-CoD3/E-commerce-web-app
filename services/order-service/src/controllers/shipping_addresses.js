@@ -8,71 +8,36 @@ import DB from "../config/db.config.js";
  */
 const createShippingAddress = async (req, res) => {
     try {
-        const user_id = req.user.id;
+        const user_id = req.user?.id || req.body.user_id;
+        const { full_address, state, city, zip_code } = req.body;
 
-        const {
-            full_address,
-            state,
-            city,
-            zip_code,
-        } = req.body;
-
-        // Validation
-        if (!full_address || !state || !city) {
+        if(!zip_code){
             return res.status(400).json({
                 success: false,
-                message: "All required fields must be provided."
-            });
-        }
-
-        //check whether shipping address exists
-        const [existShippingAddress] = await DB.promise().query(
-            `SELECT user_id
-            FROM shipping_addresses
-            WHERE user_id = ?`,
-            [user_id]
-        );
-
-        if (existShippingAddress.length > 2) {
-            return res.status(409).json({
-                success: false,
-                message: "Shipping address already 2 exists. You can select one of them or Update them"
+                message: "Zip code is required."
             });
         }
 
         const [result] = await DB.promise().query(
-            `INSERT INTO shipping_addresses
-            (user_id, full_address, state, city, zip_code)
-            VALUES (?, ?, ?, ?, ?)`,
+            `INSERT INTO shipping_addresses (user_id, full_address, state, city, zip_code)
+       VALUES (?, ?, ?, ?, ?)`,
             [
                 user_id,
-                full_address,
-                state,
-                city,
-                zip_code || null
+                full_address || "",
+                state || "",
+                city || "",
+                zip_code || "" // Prevents MySQL NULL constraint error
             ]
         );
 
         return res.status(201).json({
             success: true,
-            message: "Shipping address created successfully.",
-            data: {
-                id: result.insertId,
-                user_id,
-                full_address,
-                state,
-                city,
-                zip_code: zip_code || null
-            }
+            message: "Address created successfully",
+            id: result.insertId,
         });
-
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+        console.error("Database Insert Error:", error);
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -263,26 +228,56 @@ const getShippingAddress = async (req, res) => {
     try {
         const user_id = req.params.id;
 
-        const [address] = await DB.promise().query(
+        const [addresses] = await DB.promise().query(
             `SELECT id, user_id, full_address, city, state, zip_code
              FROM shipping_addresses
              WHERE user_id = ?`,
             [user_id]
         );
 
-        if (address.length === 0) {
+        if (addresses.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: "Shipping address not found."
+                message: "No shipping addresses found for this user."
             });
         }
 
         return res.status(200).json({
             success: true,
-            address: address[0]
+            addresses: addresses
         });
     } catch (error) {
-        console.error(error);
+        console.error("Error fetching addresses:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+//delete address
+const deleteShippingAddress = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [result] = await DB.promise().query(
+            `DELETE FROM shipping_addresses WHERE id = ?`,
+            [id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Address not found or already deleted."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Shipping address deleted successfully."
+        });
+    } catch (error) {
+        console.error("Error deleting address:", error);
         return res.status(500).json({
             success: false,
             message: "Internal Server Error"
@@ -295,6 +290,7 @@ export {
     createShippingAddress,
     updateShippingAddress,
     getShippingAddress,
-    getShippingAddressById
+    getShippingAddressById,
+    deleteShippingAddress
 }
 

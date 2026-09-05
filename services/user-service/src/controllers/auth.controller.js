@@ -616,7 +616,7 @@ const get_me = async (req, res) => {
         }
 
         const [user_data] = await DB.promise().query(
-            `SELECT full_name, email, phone_number FROM users WHERE id = ?`, [user_id]
+            `SELECT id, full_name, email, phone_number FROM users WHERE id = ?`, [user_id]
         )
 
         if (user_data.length === 0) {

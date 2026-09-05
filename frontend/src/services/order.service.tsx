@@ -150,18 +150,24 @@ export const createShippingAddress = async (data: any) => {
 
 // 2. Update Shipping Address
 export const updateShippingAddress = async (id: number | string, data: any) => {
-  const response = await AxiosInstance.put(`/order/address/${id}`, data);
+  const response = await AxiosInstance.patch(`/order/address/${id}`, data);
   return response.data;
 };
 
 // 3. Get Shipping Address By ID
 export const getShippingAddressById = async (id: number | string) => {
-  const response = await AxiosInstance.get(`/order/address/${id}`);
+  const response = await AxiosInstance.get(`/order/address/user/${id}`);
   return response.data;
 };
 
 // 4. Get User Shipping Address
 export const getUserShippingAddress = async (id: number) => {
   const response = await AxiosInstance.get(`/order/address/user/${id}`);
+  return response.data;
+};
+
+// 5. Delete Shipping Address
+export const deleteShippingAddress = async (id: number | string) => {
+  const response = await AxiosInstance.delete(`/order/address/${id}`);
   return response.data;
 };
