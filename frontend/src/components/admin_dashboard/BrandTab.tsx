@@ -41,7 +41,7 @@ export default function BrandTab({
       setLoading(true);
       const fetchedBrands = await getAllBrands();
       setBrands(fetchedBrands.data);
-      console.log('Fetched brands:', fetchedBrands.data);
+      // console.log('Fetched brands:', fetchedBrands.data);
     } catch (err) {
       console.error('Failed to fetch brands:', err);
     } finally {
