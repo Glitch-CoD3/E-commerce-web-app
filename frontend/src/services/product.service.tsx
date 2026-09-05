@@ -120,7 +120,10 @@ export const getProductByVarientId = async (id: number) => {
   return response.data;
 };
 
-
+export const getVariantImageById = async (id: number) => {
+  const response = await AxiosInstance.get(`/product-variants-image/${id}`);
+  return response.data;
+};
 
 //-------------------------------//
 //PRODUCTS Brands API CALLS

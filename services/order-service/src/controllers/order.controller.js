@@ -118,7 +118,7 @@ const createOrder = async (req, res) => {
             orderItems.push({
                 product_id: product.id,
                 product_variant_id: cartItem.product_variant_id,
-                product_name: product.name,
+                product_name: product.product_name,
                 price: product.price,
                 quantity: cartItem.quantity,
                 total_amount: product.price * cartItem.quantity
