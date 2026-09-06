@@ -100,8 +100,8 @@ export default function OrderDetails(props) {
   const items = props?.items || [];
   const shippingAddress = props?.shippingAddress || {};
   const customer = props?.customer || {};
-  const images = props?.images || {}; // Access the images map prop
-
+  const productsVarient = props?.productsVarients || {};
+  
   // Extract root-level variables
   const id = order?.id;
   const initialPaymentStatus = order?.payment_status || "UNPAID";
@@ -121,8 +121,8 @@ export default function OrderDetails(props) {
 
   // Synchronize local state when server/parent updates the order prop
   useEffect(() => {
-    if (order?.status || order?.order_status) {
-      setCurrentStatus(order?.status || order?.order_status);
+    if (order?.status) {
+      setCurrentStatus(order?.status);
     }
     if (order?.payment_status) {
       setCurrentPaymentStatus(order?.payment_status);
@@ -165,17 +165,19 @@ export default function OrderDetails(props) {
     }
   };
 
-  // Helper to resolve the image URL for an item
   const getItemImage = (item) => {
-    const variantId = item?.variant_id || item?.product_variant_id || item?.variantId;
-    return (
-      item?.image_url ||
-      (variantId ? images[variantId] : null) ||
-      item?.product_image ||
-      item?.productImage ||
-      item?.image ||
-      item?.product?.image
-    );
+    return item?.image_url;
+  };
+
+  // Helper to fetch variant color and size directly from productsVarient
+  const getVariantData = (item) => {
+    const variantId = item?.product_variant_id;
+    const variantObj = productsVarient?.[variantId]?.product_varient;
+
+    const color = variantObj?.colors || null;
+    const size = variantObj?.sizes || null;
+
+    return { color, size };
   };
 
   return (
@@ -277,6 +279,7 @@ export default function OrderDetails(props) {
               <thead className="border-b border-slate-600 bg-slate-800/60 text-xs font-bold uppercase tracking-wider text-slate-300">
                 <tr>
                   <th scope="col" className="py-3 px-4">Item</th>
+                  <th scope="col" className="py-3 px-4">Variant</th>
                   <th scope="col" className="py-3 px-4 text-center">Qty</th>
                   <th scope="col" className="py-3 px-4 text-right">Price</th>
                   <th scope="col" className="py-3 px-4 text-right">Total</th>
@@ -284,14 +287,12 @@ export default function OrderDetails(props) {
               </thead>
               <tbody className="divide-y divide-slate-600/60">
                 {items.map((item, idx) => {
-                  const name = item?.product_name || item?.productName || item?.title || item?.product?.name || "Unnamed Product";
+                  const name = item?.product_name || "Unnamed Product";
                   const image = getItemImage(item);
-                  const price = Number(item?.price || item?.unit_price || item?.unitPrice || 0);
-                  const qty = Number(item?.quantity || item?.qty || 1);
-                  const itemTotal = Number(item?.total_amount || item?.totalAmount || item?.subtotal || price * qty);
-                  const color = item?.color || item?.variant?.color;
-                  const size = item?.size || item?.variant?.size;
-                  const hasVariant = Boolean(color || size);
+                  const price = Number(item?.price || 0);
+                  const qty = Number(item?.quantity || 1);
+                  const itemTotal = Number(item?.total_amount || 0);
+                  const { color, size } = getVariantData(item);
 
                   return (
                     <tr key={item?.id || idx} className="group hover:bg-slate-600/40 transition-colors">
@@ -310,13 +311,26 @@ export default function OrderDetails(props) {
                             <p className="font-semibold text-white group-hover:text-sky-300 transition-colors">
                               {name}
                             </p>
-                            {hasVariant && (
-                              <p className="mt-0.5 text-xs text-slate-300">
-                                {[color, size].filter(Boolean).join(" / ")}
-                              </p>
-                            )}
                           </div>
                         </div>
+                      </td>
+                      <td className="py-4 px-4 text-slate-300">
+                        {color || size ? (
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            {color && (
+                              <span>
+                                Color: <strong className="text-white font-medium">{color}</strong>
+                              </span>
+                            )}
+                            {size && (
+                              <span>
+                                Size: <strong className="text-white font-medium">{size}</strong>
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 text-xs">—</span>
+                        )}
                       </td>
                       <td className="py-4 px-4 text-center font-bold text-slate-100">{qty}</td>
                       <td className="py-4 px-4 text-right text-slate-300">{formatCurrency(price)}</td>
@@ -331,14 +345,12 @@ export default function OrderDetails(props) {
           {/* Mobile View */}
           <div className="divide-y divide-slate-600/60 sm:hidden">
             {items.map((item, idx) => {
-              const name = item?.product_name || item?.productName || item?.title || item?.product?.name || "Unnamed Product";
+              const name = item?.product_name || "Unnamed Product";
               const image = getItemImage(item);
-              const price = Number(item?.price || item?.unit_price || item?.unitPrice || 0);
-              const qty = Number(item?.quantity || item?.qty || 1);
-              const itemTotal = Number(item?.total_amount || item?.totalAmount || item?.subtotal || price * qty);
-              const color = item?.color || item?.variant?.color;
-              const size = item?.size || item?.variant?.size;
-              const hasVariant = Boolean(color || size);
+              const price = Number(item?.price || 0);
+              const qty = Number(item?.quantity || 1);
+              const itemTotal = Number(item?.total_amount || 0);
+              const { color, size } = getVariantData(item);
 
               return (
                 <div key={item?.id || idx} className="flex gap-4 py-4 first:pt-0 last:pb-0">
@@ -354,10 +366,12 @@ export default function OrderDetails(props) {
                   <div className="flex flex-1 flex-col justify-between">
                     <div>
                       <p className="text-sm font-semibold text-white leading-snug">{name}</p>
-                      {hasVariant && (
-                        <p className="mt-0.5 text-xs text-slate-300">
-                          {[color, size].filter(Boolean).join(" / ")}
-                        </p>
+                      {(color || size) && (
+                        <div className="mt-1 text-xs text-slate-300 flex items-center gap-2">
+                          {color && <span>Color: <strong className="text-white">{color}</strong></span>}
+                          {color && size && <span>•</span>}
+                          {size && <span>Size: <strong className="text-white">{size}</strong></span>}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center justify-between mt-2 text-xs">

@@ -92,7 +92,7 @@ export default function OrderTab({
           ...order,
           address: order.address || '',
           customerName: user?.full_name || order.customerName || 'Unknown Customer',
-          customerEmail: user?.email || order.customerEmail || 'N/A',
+          customerEmail: user?.email || 'N/A',
         };
       });
 

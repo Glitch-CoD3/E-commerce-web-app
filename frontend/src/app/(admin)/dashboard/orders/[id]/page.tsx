@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 // Adjust these import paths according to your actual folder structure
 import { getOrderByOrderId } from '../../../../../services/order.service';
 import { getUserById } from '../../../../../services/user.service';
-import { getVariantImageById } from '../../../../../services/product.service';
+import { getVariantImageById, getProductByVarientId } from '../../../../../services/product.service';
 import OrderDetails from '../../../../../components/admin_dashboard/OrderDetails';
 
 export default function OrderDetailsPage() {
@@ -19,11 +19,14 @@ export default function OrderDetailsPage() {
   const [orderData, setOrderData] = useState<any>(null);
   const [customerData, setCustomerData] = useState<any>(null);
   const [variantImages, setVariantImages] = useState<Record<string | number, string>>({});
+  const [productsMap, setProductsMap] = useState<Record<string | number, any>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orderId) return;
+
+    let isMounted = true; // Prevents state updates on unmounted component
 
     const fetchOrderDetails = async () => {
       try {
@@ -32,64 +35,101 @@ export default function OrderDetailsPage() {
 
         // Fetch order data
         const data = await getOrderByOrderId(orderId);
+        if (!isMounted) return;
         setOrderData(data);
 
-        // Extract order details & customer ID
+         // Extract order details safely
         const orderDetailsArray = data?.order_result?.order_details || [];
-        const orderDetails = orderDetailsArray[0] || data?.order;
+        const orderDetails = orderDetailsArray;
+
+        // Use the local variable 'orderDetails' or 'data', NOT state 'orderData'
         const userId = orderDetails?.user_id;
 
         // Fetch user details if userId exists
         if (userId) {
-          const customer = await getUserById(userId);
-          setCustomerData(customer?.data || customer?.user || customer);
+          try {
+            const customer: any = await getUserById(userId);
+            if (isMounted) {
+              setCustomerData(customer?.data || customer?.user || customer);
+            }
+          } catch (userErr) {
+            console.error(`Failed to fetch user ${userId}:`, userErr);
+          }
         }
 
-        // Fetch variant images for each item in the order
+        // Fetch variant images and product details concurrently for each item
         const items = data?.order_result?.Order_items || [];
 
         if (items.length > 0) {
-          const imagePromises = items.map(async (item: any) => {
-            const variantId = item?.variant_id || item?.product_variant_id || item?.variantId;
-            if (!variantId) return null;
+          // Deduplicate variant IDs to avoid duplicate API requests
+          const uniqueVariantIds = Array.from(
+            new Set(
+              items
+                .map((item: any) => item?.product_variant_id )
+                .filter(Boolean)
+            )
+          ) as (string | number)[];
 
+          const itemDetailsPromises = uniqueVariantIds.map(async (variantId) => {
             try {
-              const imageResponse = await getVariantImageById(variantId);
-              
-              // Extract image_url from data array based on response payload structure
+              const numericVariantId = Number(variantId);
+              const [imageResponse, productResponse] = await Promise.allSettled([
+                getVariantImageById(numericVariantId),
+                getProductByVarientId(numericVariantId),
+              ]);
+
               const imageUrl =
-                imageResponse?.data?.[0]?.image_url ||
-                null;
+                imageResponse.status === 'fulfilled'
+                  ? imageResponse.value?.data?.[0]?.image_url || null
+                  : null;
 
-              return { variantId, imageUrl };
-            } catch (imgErr) {
-              console.error(`Failed to fetch image for variant ${variantId}:`, imgErr);
-              return { variantId, imageUrl: null };
+              const productData =
+                productResponse.status === 'fulfilled'
+                  ? productResponse.value?.data || productResponse.value?.product || productResponse.value
+                  : null;
+
+              return { variantId, imageUrl, productData };
+            } catch (err) {
+              console.error(`Failed fetching details for variant ${variantId}:`, err);
+              return { variantId, imageUrl: null, productData: null };
             }
           });
 
-          const resolvedImages = await Promise.all(imagePromises);
+          const resolvedDetails = await Promise.all(itemDetailsPromises);
 
-          // Build a map of { [variantId]: imageUrl }
-          const imageMap: Record<string | number, string> = {};
-          resolvedImages.forEach((res) => {
-            if (res && res.variantId && res.imageUrl) {
-              imageMap[res.variantId] = res.imageUrl;
-            }
-          });
+          if (isMounted) {
+            const imageMap: Record<string | number, string> = {};
+            const prodMap: Record<string | number, any> = {};
 
-          setVariantImages(imageMap);
+            resolvedDetails.forEach((res) => {
+              if (res.variantId) {
+                if (res.imageUrl) imageMap[res.variantId] = res.imageUrl;
+                if (res.productData) prodMap[res.variantId] = res.productData;
+              }
+            });
+
+            setVariantImages(imageMap);
+            setProductsMap(prodMap);
+          }
         }
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to fetch order details'
-        );
+        if (isMounted) {
+          setError(
+            err instanceof Error ? err.message : 'Failed to fetch order details'
+          );
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchOrderDetails();
+
+    return () => {
+      isMounted = false; // Cleanup flag
+    };
   }, [orderId]);
 
   // Loading State
@@ -122,12 +162,13 @@ export default function OrderDetailsPage() {
   // Raw items array safely retrieved
   const rawItems = orderData?.order_result?.Order_items || orderData?.order_result?.order_items || [];
 
-  // Attach fetched images to each item
-  const itemsWithImages = rawItems.map((item: any) => {
+  // Attach fetched images & product details to each item
+  const itemsWithDetails = rawItems.map((item: any) => {
     const variantId = item?.variant_id || item?.product_variant_id || item?.variantId;
     return {
       ...item,
       image_url: variantImages[variantId] || item?.image_url || null,
+      product: productsMap[variantId] || null,
     };
   });
 
@@ -150,10 +191,11 @@ export default function OrderDetailsPage() {
       <div className="flex-1 w-full min-h-0 flex flex-col">
         <OrderDetails
           order={orderData?.order_result?.order_details || []}
-          items={itemsWithImages}
+          items={itemsWithDetails}
           shippingAddress={orderData?.order_result?.shipping_address || []}
           customer={customerData}
-          images = {variantImages}
+          images={variantImages}
+          productsVarients={productsMap}
         />
       </div>
     </div>
