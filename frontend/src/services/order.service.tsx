@@ -47,7 +47,16 @@ export const getUserOrdersHistory = async () => {
 
 // 4. Get Order By Order ID
 export const getOrderByOrderId = async (id: number | string) => {
-  const response = await AxiosInstance.get(`/order/${id}`);
+  const response = await AxiosInstance.get(`/order/details/${id}`);
+  return response.data;
+};
+
+export const getOrderByQueryId = async (id: number | string) => {
+  const response = await AxiosInstance.get('/order/details', {
+    params: {
+      orderId: id
+    }
+  });
   return response.data;
 };
 
@@ -159,6 +168,12 @@ export const getShippingAddressById = async (id: number | string) => {
   const response = await AxiosInstance.get(`/order/address/user/${id}`);
   return response.data;
 };
+
+export const getShippingAddressByAddressId = async (id: number | string) => {
+  const response = await AxiosInstance.get(`/order/address/${id}`);
+  return response.data;
+};
+
 
 // 4. Get User Shipping Address
 export const getUserShippingAddress = async (id: number) => {

@@ -212,6 +212,8 @@ router.patch(
  * @description Get details of a specific order belonging to the authenticated user.
  * @access Private (User)
  */
-router.get("/:orderId", getOrderByOrderId);
+router.get("/details/", getOrderByOrderId);
+router.get("/details/:orderId", getOrderByOrderId);
+
 
 export default router;
